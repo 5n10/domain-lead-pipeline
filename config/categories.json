@@ -1,0 +1,32 @@
+{
+  "all": {
+    "label": "All (broad OSM query)",
+    "filters": [
+      {"category": "any_shop", "tags": {"shop": "*"}},
+      {"category": "any_amenity", "tags": {"amenity": "*"}},
+      {"category": "any_office", "tags": {"office": "*"}},
+      {"category": "any_craft", "tags": {"craft": "*"}},
+      {"category": "any_industrial", "tags": {"industrial": "*"}},
+      {"category": "any_tourism", "tags": {"tourism": "*"}},
+      {"category": "any_leisure", "tags": {"leisure": "*"}},
+      {"category": "any_healthcare", "tags": {"healthcare": "*"}}
+    ]
+  },
+  "trades": {
+    "label": "Trades",
+    "filters": [
+      {"category": "plumber", "tags": {"craft": "plumber"}},
+      {"category": "electrician", "tags": {"craft": "electrician"}},
+      {"category": "carpenter", "tags": {"craft": "carpenter"}},
+      {"category": "painter", "tags": {"craft": "painter"}}
+    ]
+  },
+  "contractors": {
+    "label": "Contractors",
+    "filters": [
+      {"category": "builder", "tags": {"craft": "builder"}},
+      {"category": "construction_company", "tags": {"office": "construction_company"}},
+      {"category": "construction_company", "tags": {"office": "company", "company": "construction"}}
+    ]
+  }
+}

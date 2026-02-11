@@ -1,0 +1,130 @@
+{
+  "uae": {
+    "name": "United Arab Emirates",
+    "country": "AE",
+    "region": "UAE",
+    "area_tags": {
+      "name": "United Arab Emirates",
+      "boundary": "administrative",
+      "admin_level": "2"
+    },
+    "bbox": {
+      "min_lat": 22.6,
+      "min_lon": 51.5,
+      "max_lat": 26.1,
+      "max_lon": 56.5
+    }
+  },
+  "abu_dhabi": {
+    "name": "Abu Dhabi",
+    "country": "AE",
+    "region": "Abu Dhabi",
+    "area_tags": {
+      "name": "Abu Dhabi",
+      "boundary": "administrative",
+      "admin_level": "4"
+    },
+    "bbox": {
+      "min_lat": 22.6,
+      "min_lon": 51.3,
+      "max_lat": 25.4,
+      "max_lon": 55.6
+    }
+  },
+  "dubai": {
+    "name": "Dubai",
+    "country": "AE",
+    "region": "Dubai",
+    "area_tags": {
+      "name": "Dubai",
+      "boundary": "administrative",
+      "admin_level": "4"
+    },
+    "bbox": {
+      "min_lat": 24.6,
+      "min_lon": 54.8,
+      "max_lat": 25.4,
+      "max_lon": 55.6
+    }
+  },
+  "sharjah": {
+    "name": "Sharjah",
+    "country": "AE",
+    "region": "Sharjah",
+    "area_tags": {
+      "name": "Sharjah",
+      "boundary": "administrative",
+      "admin_level": "4"
+    },
+    "bbox": {
+      "min_lat": 24.7,
+      "min_lon": 55.2,
+      "max_lat": 25.8,
+      "max_lon": 56.3
+    }
+  },
+  "ajman": {
+    "name": "Ajman",
+    "country": "AE",
+    "region": "Ajman",
+    "area_tags": {
+      "name": "Ajman",
+      "boundary": "administrative",
+      "admin_level": "4"
+    },
+    "bbox": {
+      "min_lat": 25.3,
+      "min_lon": 55.4,
+      "max_lat": 25.5,
+      "max_lon": 55.6
+    }
+  },
+  "umm_al_quwain": {
+    "name": "Umm Al Quwain",
+    "country": "AE",
+    "region": "Umm Al Quwain",
+    "area_tags": {
+      "name": "Umm Al Quwain",
+      "boundary": "administrative",
+      "admin_level": "4"
+    },
+    "bbox": {
+      "min_lat": 25.4,
+      "min_lon": 55.4,
+      "max_lat": 25.9,
+      "max_lon": 55.9
+    }
+  },
+  "ras_al_khaimah": {
+    "name": "Ras al-Khaimah",
+    "country": "AE",
+    "region": "Ras al-Khaimah",
+    "area_tags": {
+      "name": "Ras al-Khaimah",
+      "boundary": "administrative",
+      "admin_level": "4"
+    },
+    "bbox": {
+      "min_lat": 25.6,
+      "min_lon": 55.5,
+      "max_lat": 26.1,
+      "max_lon": 56.1
+    }
+  },
+  "fujairah": {
+    "name": "Fujairah",
+    "country": "AE",
+    "region": "Fujairah",
+    "area_tags": {
+      "name": "Fujairah",
+      "boundary": "administrative",
+      "admin_level": "4"
+    },
+    "bbox": {
+      "min_lat": 25.0,
+      "min_lon": 56.0,
+      "max_lat": 25.8,
+      "max_lon": 56.5
+    }
+  }
+}
