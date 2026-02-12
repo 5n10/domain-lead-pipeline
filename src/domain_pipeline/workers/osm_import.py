@@ -14,6 +14,7 @@ from sqlalchemy.dialects.postgresql import insert
 from ..config import load_config
 from ..db import session_scope
 from ..models import Business, BusinessContact, City
+from .osm_contacts import extract_osm_contacts
 
 
 @dataclass
@@ -122,16 +123,8 @@ def extract_address(tags: dict[str, Any]) -> Optional[str]:
 
 
 def extract_contacts(tags: dict[str, Any]) -> list[tuple[str, str]]:
-    contacts: list[tuple[str, str]] = []
-    for key in ("phone", "contact:phone"):
-        if tags.get(key):
-            contacts.append(("phone", tags[key]))
-
-    for key in ("email", "contact:email"):
-        if tags.get(key):
-            contacts.append(("email", tags[key]))
-
-    return contacts
+    # Backwards-compatible wrapper (kept for clarity within this module).
+    return extract_osm_contacts(tags)
 
 
 def extract_website(tags: dict[str, Any]) -> Optional[str]:
