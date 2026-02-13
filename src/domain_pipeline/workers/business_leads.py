@@ -74,9 +74,11 @@ def business_eligibility_filters(
     if require_contact:
         filters.append(_business_has_contact_expr())
 
-    hosted_parked_expr = _business_has_domain_status_expr(HOSTED_DOMAIN_STATUSES | PARKED_DOMAIN_STATUSES)
-    if hosted_parked_expr is not None:
-        filters.append(not_(hosted_parked_expr))
+    # Only exclude hosted/parked domains when domain qualification is required
+    if require_domain_qualification or require_unhosted_domain:
+        hosted_parked_expr = _business_has_domain_status_expr(HOSTED_DOMAIN_STATUSES | PARKED_DOMAIN_STATUSES)
+        if hosted_parked_expr is not None:
+            filters.append(not_(hosted_parked_expr))
 
     qualification_expr = _business_has_domain_status_expr(
         VERIFIED_UNHOSTED_DOMAIN_STATUSES | UNREGISTERED_CANDIDATE_STATUSES
@@ -160,39 +162,22 @@ def load_business_features(session, business_ids: list) -> dict:
 
 
 def _score_business(business: Business, feature: dict) -> tuple[float, dict]:
-    has_hosted_domain = bool(feature["hosted_domains"])
-    has_parked_domain = bool(feature["parked_domains"])
-    if has_hosted_domain or has_parked_domain:
-        return 0.0, {
-            "category": (business.category or "").strip() or None,
-            "has_email": bool(feature["emails"]),
-            "has_business_email": bool(feature["business_emails"]),
-            "has_phone": bool(feature["phones"]),
-            "disqualified": True,
-            "disqualification_reasons": [
-                reason
-                for reason, flag in (
-                    ("hosted_domain_signal", has_hosted_domain),
-                    ("parked_domain_signal", has_parked_domain),
-                )
-                if flag
-            ],
-            "hosted_domains": sorted(feature["hosted_domains"]),
-            "parked_domains": sorted(feature["parked_domains"]),
-            "domain_status_counts": feature["domain_status_counts"],
-        }
-
     score = 0.0
     has_email = bool(feature["emails"])
     has_business_email = bool(feature["business_emails"])
     has_phone = bool(feature["phones"])
     has_domain = bool(feature["domains"])
+    has_hosted_domain = bool(feature["hosted_domains"])
+    has_parked_domain = bool(feature["parked_domains"])
     has_verified_unhosted_domain = bool(feature["verified_unhosted_domains"])
     has_unregistered_candidate_domain = bool(feature["unregistered_domains"])
     has_unknown_domain = bool(feature["unknown_domains"])
 
+    # Base: no website = strong lead signal
     if not business.website_url:
         score += 25
+
+    # Contact signals
     if has_business_email:
         score += 20
     elif has_email:
@@ -200,13 +185,18 @@ def _score_business(business: Business, feature: dict) -> tuple[float, dict]:
     if has_phone:
         score += 15
 
+    # Domain signals
     if has_verified_unhosted_domain:
         score += 35
     elif has_unregistered_candidate_domain:
         score += 20
+    elif has_hosted_domain or has_parked_domain:
+        # Reduce score slightly — these businesses already have some web presence
+        score += 0
     elif has_domain:
         score += 10
 
+    # Category signals
     category = (business.category or "").strip()
     if category in HIGH_PRIORITY_CATEGORIES:
         score += 20
@@ -215,17 +205,19 @@ def _score_business(business: Business, feature: dict) -> tuple[float, dict]:
     elif category:
         score += 5
 
-    # Quality caps: if no domain qualification evidence, don't allow high-confidence scores.
-    if not (has_verified_unhosted_domain or has_unregistered_candidate_domain):
-        score = min(score, 45.0)
+    # Quality caps: only apply light caps, don't block businesses entirely
+    if has_hosted_domain and not (has_verified_unhosted_domain or has_unregistered_candidate_domain):
+        score = min(score, 60.0)
     if has_unknown_domain and not (has_verified_unhosted_domain or has_unregistered_candidate_domain):
-        score = min(score, 35.0)
+        score = min(score, 55.0)
 
     reasons = {
         "category": category or None,
         "has_email": has_email,
         "has_business_email": has_business_email,
         "has_phone": has_phone,
+        "has_hosted_domain": has_hosted_domain,
+        "has_parked_domain": has_parked_domain,
         "domain_count": len(feature["domains"]),
         "verified_unhosted_domain_count": len(feature["verified_unhosted_domains"]),
         "unregistered_domain_count": len(feature["unregistered_domains"]),
@@ -234,6 +226,8 @@ def _score_business(business: Business, feature: dict) -> tuple[float, dict]:
         "verified_unhosted_domains": sorted(feature["verified_unhosted_domains"]),
         "unregistered_domains": sorted(feature["unregistered_domains"]),
         "unknown_domains": sorted(feature["unknown_domains"]),
+        "hosted_domains": sorted(feature["hosted_domains"]),
+        "parked_domains": sorted(feature["parked_domains"]),
         "domain_status_counts": feature["domain_status_counts"],
     }
     return min(score, 100.0), reasons
@@ -241,7 +235,8 @@ def _score_business(business: Business, feature: dict) -> tuple[float, dict]:
 
 def score_businesses(limit: Optional[int] = None, scope: Optional[str] = None, force_rescore: bool = False) -> int:
     config = load_config()
-    batch_size = config.batch_size if limit is None else max(limit, 0)
+    # When limit is None or 0, score ALL businesses (no limit)
+    batch_size = None if (limit is None or limit <= 0) else limit
 
     with session_scope() as session:
         run = start_job(
@@ -251,9 +246,6 @@ def score_businesses(limit: Optional[int] = None, scope: Optional[str] = None, f
             details={"force_rescore": force_rescore},
         )
         try:
-            if batch_size == 0:
-                complete_job(session, run, processed_count=0, details={"force_rescore": force_rescore})
-                return 0
 
             stale_contact_exists = exists(
                 select(BusinessContact.id)
@@ -275,7 +267,9 @@ def score_businesses(limit: Optional[int] = None, scope: Optional[str] = None, f
                 .where(Domain.updated_at > Business.scored_at)
             )
 
-            stmt = _base_business_query().order_by(Business.created_at).limit(batch_size)
+            stmt = _base_business_query().order_by(Business.created_at)
+            if batch_size is not None:
+                stmt = stmt.limit(batch_size)
             if not force_rescore:
                 stmt = stmt.where(
                     or_(
@@ -325,7 +319,7 @@ def export_business_leads(
     export_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     path = export_dir / f"business_leads_{platform}_{timestamp}.csv"
-    row_limit = None if limit is None else max(limit, 0)
+    row_limit = None if (limit is None or limit <= 0) else limit
     final_limit = row_limit
     if max_written is not None:
         final_limit = max_written if final_limit is None else min(final_limit, max_written)

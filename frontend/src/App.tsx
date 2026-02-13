@@ -10,17 +10,19 @@ type LeadFilters = {
   requireContact: boolean;
   requireUnhostedDomain: boolean;
   requireDomainQualification: boolean;
+  requireNoWebsite: boolean;
   onlyUnexported: boolean;
   limit: string;
 };
 
 const defaultFilters: LeadFilters = {
-  minScore: "40",
+  minScore: "",
   category: "all",
   city: "",
-  requireContact: true,
+  requireContact: false,
   requireUnhostedDomain: false,
   requireDomainQualification: false,
+  requireNoWebsite: true,
   onlyUnexported: false,
   limit: "200"
 };
@@ -68,7 +70,7 @@ export default function App() {
   const [loading, setLoading] = useState<boolean>(false);
   const [actionLoading, setActionLoading] = useState<boolean>(false);
 
-  const [pipelineArea, setPipelineArea] = useState<string>("uae");
+  const [pipelineArea, setPipelineArea] = useState<string>("");
   const [pipelineSyncLimit, setPipelineSyncLimit] = useState<string>("500");
   const [pipelineRdapLimit, setPipelineRdapLimit] = useState<string>("100");
   const [pipelineBusinessScoreLimit, setPipelineBusinessScoreLimit] = useState<string>("2000");
@@ -140,6 +142,7 @@ export default function App() {
       params.set("require_contact", String(nextFilters.requireContact));
       params.set("require_unhosted_domain", String(nextFilters.requireUnhostedDomain));
       params.set("require_domain_qualification", String(nextFilters.requireDomainQualification));
+      params.set("require_no_website", String(nextFilters.requireNoWebsite));
       params.set("only_unexported", String(nextFilters.onlyUnexported));
       params.set("limit", nextFilters.limit.trim() || "200");
 
@@ -157,21 +160,30 @@ export default function App() {
     event.preventDefault();
     setActionLoading(true);
     try {
+      const syncLim = Number(pipelineSyncLimit);
+      const rdapLim = Number(pipelineRdapLimit);
+      const bsLim = Number(pipelineBusinessScoreLimit);
+      const bsMin = Number(exportMinScore);
       const result = await api.runPipeline({
         area: pipelineArea || null,
         categories: "all",
-        sync_limit: Number(pipelineSyncLimit),
-        rdap_limit: Number(pipelineRdapLimit),
+        sync_limit: isNaN(syncLim) || pipelineSyncLimit.trim() === "" ? null : syncLim,
+        rdap_limit: isNaN(rdapLim) || pipelineRdapLimit.trim() === "" ? null : rdapLim,
         email_limit: 0,
         score_limit: 0,
-        business_score_limit: Number(pipelineBusinessScoreLimit),
-        business_min_score: Number(exportMinScore),
+        business_score_limit: isNaN(bsLim) || pipelineBusinessScoreLimit.trim() === "" ? null : bsLim,
+        business_min_score: isNaN(bsMin) || exportMinScore.trim() === "" ? null : bsMin,
         business_platform: exportPlatform,
         business_require_contact: exportRequireContact,
         business_require_unhosted_domain: exportRequireUnhosted,
         business_require_domain_qualification: exportRequireDomainQualification
       });
-      setStatusMessage(`Pipeline completed: ${JSON.stringify(result)}`);
+      const r = result as Record<string, unknown>;
+      const parts: string[] = [];
+      if (r.imported) parts.push(`${r.imported} imported`);
+      if (typeof r.business_scored === "number" && r.business_scored > 0) parts.push(`${r.business_scored} scored`);
+      if (r.business_export_path) parts.push("export created");
+      setStatusMessage(parts.length ? `Pipeline done: ${parts.join(", ")}` : "Pipeline completed (no new data)");
       await Promise.all([refreshOverview(), refreshLeads()]);
     } catch (error) {
       setStatusMessage(`Pipeline failed: ${(error as Error).message}`);
@@ -184,8 +196,9 @@ export default function App() {
     event.preventDefault();
     setActionLoading(true);
     try {
+      const sLim = Number(scoreLimit);
       const result = await api.scoreBusinesses({
-        limit: Number(scoreLimit),
+        limit: isNaN(sLim) || scoreLimit.trim() === "" ? null : sLim,
         scope: pipelineArea || null,
         force_rescore: scoreForceRescore
       });
@@ -352,8 +365,7 @@ export default function App() {
         <div>
           <h1>Domain Lead Command Center</h1>
           <p>
-            Track UAE lead generation, score no-website businesses, and export outreach-ready targets without leaving
-            the dashboard.
+            Find businesses without websites, score leads, and export outreach-ready targets — anywhere in the world.
           </p>
         </div>
         <div className="hero-actions">
@@ -366,8 +378,9 @@ export default function App() {
         </div>
       </header>
 
-      <section className="status-bar">
+      <section className={`status-bar ${statusMessage.toLowerCase().includes("failed") || statusMessage.toLowerCase().includes("error") ? "status-error" : ""}`}>
         <strong>Status:</strong> {statusMessage}
+        {actionLoading && <span className="spinner"> ⏳ Running...</span>}
       </section>
 
       <section className="grid">
@@ -468,7 +481,7 @@ export default function App() {
             </label>
             <label>
               Import area each cycle (optional)
-              <input value={autoArea} onChange={(event) => setAutoArea(event.target.value)} placeholder="uae" />
+              <input value={autoArea} onChange={(event) => setAutoArea(event.target.value)} placeholder="e.g. Toronto, Canada" />
             </label>
             <label className="check">
               <input
@@ -526,7 +539,7 @@ export default function App() {
             <h3>Run Unified Pipeline</h3>
             <label>
               Area
-              <input value={pipelineArea} onChange={(event) => setPipelineArea(event.target.value)} />
+              <input value={pipelineArea} onChange={(event) => setPipelineArea(event.target.value)} placeholder="e.g. Toronto, Canada" />
             </label>
             <label>
               Sync Limit
@@ -553,7 +566,7 @@ export default function App() {
               />
             </label>
             <button type="submit" disabled={actionLoading}>
-              Run Pipeline
+              {actionLoading ? "⏳ Running Pipeline..." : "Run Pipeline"}
             </button>
           </form>
 
@@ -572,7 +585,7 @@ export default function App() {
               Force rescore
             </label>
             <button type="submit" disabled={actionLoading}>
-              Score Now
+              {actionLoading ? "⏳ Scoring..." : "Score Now"}
             </button>
           </form>
 
@@ -615,7 +628,7 @@ export default function App() {
               Require domain qualification
             </label>
             <button type="submit" disabled={actionLoading}>
-              Export Now
+              {actionLoading ? "⏳ Exporting..." : "Export Now"}
             </button>
           </form>
         </article>
@@ -704,6 +717,14 @@ export default function App() {
           <label className="check">
             <input
               type="checkbox"
+              checked={filters.requireNoWebsite}
+              onChange={(event) => setFilters((prev) => ({ ...prev, requireNoWebsite: event.target.checked }))}
+            />
+            No website only
+          </label>
+          <label className="check">
+            <input
+              type="checkbox"
               checked={filters.onlyUnexported}
               onChange={(event) => setFilters((prev) => ({ ...prev, onlyUnexported: event.target.checked }))}
             />
@@ -716,6 +737,11 @@ export default function App() {
 
         <p className="table-caption">
           Showing {leads?.returned ?? 0} of {leads?.total_candidates ?? 0} candidates
+          {metrics && (
+            <span className="total-context">
+              {" "}({metrics.businesses.total.toLocaleString()} total businesses, {metrics.businesses.no_website.toLocaleString()} without website, {metrics.businesses.no_website_scored.toLocaleString()} scored)
+            </span>
+          )}
         </p>
         <div className="table-wrap">
           <table>
@@ -748,16 +774,18 @@ export default function App() {
                   <th>Status</th>
                   <th>Processed</th>
                   <th>Started</th>
+                  <th>Error</th>
                 </tr>
               </thead>
               <tbody>
                 {jobs.map((job) => (
-                  <tr key={job.id}>
+                  <tr key={job.id} className={job.status === "failed" ? "row-error" : ""}>
                     <td>{job.job_name}</td>
                     <td>{job.scope || "-"}</td>
                     <td>{job.status}</td>
                     <td>{job.processed_count}</td>
                     <td>{formatDate(job.started_at)}</td>
+                    <td title={job.error || ""}>{job.error ? job.error.substring(0, 80) + (job.error.length > 80 ? "..." : "") : "-"}</td>
                   </tr>
                 ))}
               </tbody>

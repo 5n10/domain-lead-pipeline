@@ -8,7 +8,7 @@ from .workers.business_domain_sync import run_batch as sync_business_domains
 from .workers.email_crawler import run_batch as run_role_email_enrichment
 from .workers.export_contacts import export_csv
 from .workers.lead_scoring import run_batch as run_lead_scoring
-from .workers.osm_import import import_osm, load_areas, load_categories
+from .workers.osm_import import import_osm, load_areas, load_categories, resolve_free_text_area
 from .workers.rdap_check import run_batch as run_rdap_checks
 
 
@@ -22,8 +22,12 @@ def maybe_import_businesses(
         return 0
 
     areas = load_areas(Path(areas_file))
-    if area_key not in areas:
-        raise ValueError(f"Unknown area: {area_key}")
+
+    if area_key in areas:
+        selected_area = areas[area_key]
+    else:
+        # Free-text fallback: geocode via Nominatim
+        selected_area = resolve_free_text_area(area_key)
 
     categories = load_categories(Path(categories_file))
     if categories_arg == "all":
@@ -35,7 +39,7 @@ def maybe_import_businesses(
             raise ValueError(f"Unknown categories: {', '.join(missing)}")
         selected = [categories[key] for key in keys]
 
-    return import_osm(areas[area_key], selected)
+    return import_osm(selected_area, selected)
 
 
 def run_once(

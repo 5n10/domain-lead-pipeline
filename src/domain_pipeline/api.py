@@ -46,6 +46,9 @@ def _parse_origins() -> list[str]:
                 "http://127.0.0.1:5175",
                 "http://localhost:8000",
                 "http://127.0.0.1:8000",
+                "http://host.docker.internal:5174",
+                "http://host.docker.internal:5173",
+                "http://host.docker.internal:8000",
             ]
         ),
     )
@@ -214,16 +217,15 @@ def create_app() -> FastAPI:
         min_score: Optional[float] = Query(default=None),
         category: Optional[str] = Query(default=None),
         city: Optional[str] = Query(default=None),
-        require_contact: bool = Query(default=True),
+        require_contact: bool = Query(default=False),
         require_unhosted_domain: bool = Query(default=False),
-        require_domain_qualification: bool = Query(default=True),
+        require_domain_qualification: bool = Query(default=False),
+        require_no_website: bool = Query(default=True),
         only_unexported: bool = Query(default=False),
         platform: str = Query(default="csv_business"),
         limit: int = Query(default=200, ge=1, le=2000),
         offset: int = Query(default=0, ge=0),
     ) -> dict:
-        no_website = or_(Business.website_url.is_(None), Business.website_url == "")
-
         with session_scope() as session:
             exported_for_platform_exists = exists(
                 select(BusinessOutreachExport.id)
@@ -231,7 +233,9 @@ def create_app() -> FastAPI:
                 .where(BusinessOutreachExport.platform == platform)
             )
 
-            shared_filters = [no_website, Business.lead_score.isnot(None)]
+            shared_filters = [Business.lead_score.isnot(None)]
+            if require_no_website:
+                shared_filters.append(or_(Business.website_url.is_(None), Business.website_url == ""))
             if min_score is not None:
                 shared_filters.append(Business.lead_score >= min_score)
             if category:

@@ -64,6 +64,67 @@ def load_categories(path: Path) -> dict[str, CategoryConfig]:
     return categories
 
 
+def resolve_free_text_area(location_text: str) -> AreaConfig:
+    """Resolve free-text location (e.g. 'Toronto, Canada') to an AreaConfig via Nominatim."""
+    config = load_config()
+    user_agent = getattr(config, "http_user_agent", "domain-lead-pipeline/0.1")
+    try:
+        resp = requests.get(
+            "https://nominatim.openstreetmap.org/search",
+            params={
+                "q": location_text,
+                "format": "json",
+                "addressdetails": 1,
+                "limit": 1,
+            },
+            headers={"User-Agent": user_agent},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        results = resp.json()
+    except Exception as exc:
+        raise ValueError(f"Geocoding failed for '{location_text}': {exc}") from exc
+
+    if not results:
+        raise ValueError(
+            f"Location not found: '{location_text}'. "
+            "Try a more specific name like 'Toronto, Ontario, Canada'."
+        )
+
+    hit = results[0]
+    bb = hit.get("boundingbox", [])
+    if len(bb) < 4:
+        raise ValueError(f"No bounding box returned for '{location_text}'")
+
+    bbox = {
+        "min_lat": float(bb[0]),
+        "max_lat": float(bb[1]),
+        "min_lon": float(bb[2]),
+        "max_lon": float(bb[3]),
+    }
+
+    addr = hit.get("address", {})
+    name = (
+        addr.get("city")
+        or addr.get("town")
+        or addr.get("state")
+        or addr.get("country")
+        or hit.get("name")
+        or location_text
+    )
+    country_code = (addr.get("country_code") or "").upper() or None
+    region = addr.get("state") or addr.get("region") or None
+
+    return AreaConfig(
+        key=f"_geo_{location_text.lower().replace(' ', '_').replace(',', '')}",
+        name=name,
+        country=country_code,
+        region=region,
+        area_tags={},
+        bbox=bbox,
+    )
+
+
 def build_area_clause(area_tags: dict[str, str]) -> str:
     parts = [f'"{k}"="{v}"' for k, v in area_tags.items()]
     return "[" + "][".join(parts) + "]"
