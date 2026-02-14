@@ -77,8 +77,11 @@ def _query_records(domain: str, record_type: str, timeout: int) -> tuple[bool, l
         values = [entry.to_text().strip().lower().rstrip(".") for entry in answer]
         return answer.rrset is not None, values, None
     except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN):
+        # These are expected for domains without specific record types
         return False, [], None
     except (dns.exception.Timeout, dns.resolver.NoNameservers, dns.exception.DNSException) as exc:
+        # Catch specific DNS errors before the general DNSException base class
+        # Note: Order matters - specific exceptions before base class
         return False, [], exc.__class__.__name__
 
 

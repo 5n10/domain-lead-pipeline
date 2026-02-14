@@ -124,20 +124,27 @@ def require_mutation_auth(
 
 
 def _validate_string_param(value: Optional[str], param_name: str, max_length: int = 100) -> None:
-    """Validate string query parameters to prevent abuse."""
+    """Validate string query parameters to prevent abuse.
+    
+    Empty or whitespace-only strings are treated as None (no filter applied).
+    """
     if value is None:
         return
-    # Treat empty strings as None (no filter) for optional parameters
-    if not value.strip():
+    # Treat empty/whitespace-only strings as None (no filter) for optional parameters
+    stripped = value.strip()
+    if not stripped:
         return
+    # Validate length on the original value to catch potential padding attacks
     if len(value) > max_length:
         raise HTTPException(status_code=400, detail=f"Parameter '{param_name}' exceeds maximum length of {max_length}")
     # Reject parameters with control characters that could indicate injection attempts
-    if any(char in value for char in ['\x00', '\n', '\r']):
+    # Using string for efficient membership testing
+    if any(c in '\x00\n\r' for c in value):
         raise HTTPException(
             status_code=400,
             detail=f"Parameter '{param_name}' contains control characters (null bytes, newlines, or carriage returns) which are not allowed"
         )
+
 
 
 def _validate_file_path(file_path: str, param_name: str) -> None:
