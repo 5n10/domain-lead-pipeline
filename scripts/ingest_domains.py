@@ -26,7 +26,8 @@ def read_domains(path: Path) -> list[str]:
         has_header = _has_header(sample)
         reader = csv.reader(handle)
         for idx, row in enumerate(reader):
-            if not row or len(row) == 0:
+            # Skip empty rows or rows with no columns
+            if not row:
                 continue
             if idx == 0 and has_header:
                 continue

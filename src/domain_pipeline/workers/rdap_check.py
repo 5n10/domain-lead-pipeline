@@ -323,7 +323,7 @@ def run_batch(
             batch_size = None  # No limit
         else:
             batch_size = limit
-        
+
         try:
             target_statuses = statuses or ["new"]
             stmt = (

@@ -78,7 +78,7 @@ def run_batch(limit: Optional[int] = None, scope: Optional[str] = None) -> int:
             batch_size = None  # No limit
         else:
             batch_size = limit
-        
+
         try:
             stmt = (
                 select(Domain)
