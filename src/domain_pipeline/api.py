@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import exists, func, not_, or_, select
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.staticfiles import StaticFiles
 
 from .automation import AutomationController
@@ -31,6 +32,24 @@ from .workers.business_leads import (
     load_business_features,
     score_businesses,
 )
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Add security headers to all responses."""
+    
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        # Prevent clickjacking
+        response.headers["X-Frame-Options"] = "DENY"
+        # Prevent MIME type sniffing
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        # Enable XSS protection (legacy browsers)
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        # Referrer policy
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        # Content Security Policy for API
+        response.headers["Content-Security-Policy"] = "default-src 'self'"
+        return response
 
 
 def _parse_origins() -> list[str]:
@@ -95,6 +114,31 @@ def require_mutation_auth(
         raise HTTPException(status_code=401, detail="Mutation API key is required")
     if not token or not hmac.compare_digest(token, expected):
         raise HTTPException(status_code=401, detail="Invalid mutation API key")
+
+
+def _validate_string_param(value: Optional[str], param_name: str, max_length: int = 100) -> None:
+    """Validate string query parameters to prevent abuse."""
+    if value is None:
+        return
+    if not value.strip():
+        raise HTTPException(status_code=400, detail=f"Parameter '{param_name}' cannot be empty")
+    if len(value) > max_length:
+        raise HTTPException(status_code=400, detail=f"Parameter '{param_name}' exceeds maximum length of {max_length}")
+    # Reject parameters with unusual characters that could indicate injection attempts
+    if any(char in value for char in ['\x00', '\n', '\r']):
+        raise HTTPException(status_code=400, detail=f"Parameter '{param_name}' contains invalid characters")
+
+
+def _validate_file_path(file_path: str, param_name: str) -> None:
+    """Validate file paths to prevent directory traversal."""
+    allowed_paths = ["config/areas.json", "config/categories.json"]
+    if file_path not in allowed_paths:
+        raise HTTPException(status_code=400, detail=f"Invalid {param_name}: must be one of {allowed_paths}")
+    # Additional validation: ensure the path doesn't try to escape
+    normalized = Path(file_path).resolve()
+    base_dir = Path(__file__).resolve().parent.parent
+    if not str(normalized).startswith(str(base_dir)):
+        raise HTTPException(status_code=400, detail=f"Invalid {param_name}: path traversal detected")
 
 
 class PipelineRunRequest(BaseModel):
@@ -175,12 +219,17 @@ def create_app() -> FastAPI:
             automation_controller.stop()
 
     app = FastAPI(title="Domain Lead Pipeline API", version="0.1.0", lifespan=lifespan)
+    
+    # Add security headers middleware
+    app.add_middleware(SecurityHeadersMiddleware)
+    
+    # Configure CORS with specific methods and headers instead of wildcards
     app.add_middleware(
         CORSMiddleware,
         allow_origins=_parse_origins(),
         allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allow_headers=["Content-Type", "Authorization", "X-API-Key"],
     )
 
     @app.get("/health")
@@ -226,6 +275,11 @@ def create_app() -> FastAPI:
         limit: int = Query(default=200, ge=1, le=2000),
         offset: int = Query(default=0, ge=0),
     ) -> dict:
+        # Validate string parameters
+        _validate_string_param(category, "category", max_length=50)
+        _validate_string_param(city, "city", max_length=100)
+        _validate_string_param(platform, "platform", max_length=50)
+        
         with session_scope() as session:
             exported_for_platform_exists = exists(
                 select(BusinessOutreachExport.id)
@@ -340,6 +394,10 @@ def create_app() -> FastAPI:
 
     @app.post("/api/actions/pipeline-run", dependencies=[Depends(require_mutation_auth)])
     def api_run_pipeline(payload: PipelineRunRequest) -> dict:
+        # Validate file paths to prevent directory traversal
+        _validate_file_path(payload.areas_file, "areas_file")
+        _validate_file_path(payload.categories_file, "categories_file")
+        
         return run_once(
             area=payload.area,
             categories=payload.categories,
@@ -405,6 +463,11 @@ def create_app() -> FastAPI:
     @app.post("/api/automation/settings", dependencies=[Depends(require_mutation_auth)])
     def api_automation_update_settings(payload: AutomationSettingsRequest) -> dict:
         updates = payload.model_dump(exclude_none=True)
+        # Validate file paths if present
+        if "areas_file" in updates and updates["areas_file"]:
+            _validate_file_path(updates["areas_file"], "areas_file")
+        if "categories_file" in updates and updates["categories_file"]:
+            _validate_file_path(updates["categories_file"], "categories_file")
         automation_controller.update_settings(updates)
         return automation_controller.status()
 

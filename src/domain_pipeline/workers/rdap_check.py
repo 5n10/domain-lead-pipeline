@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import socket
 from typing import Any, Optional
 from urllib.parse import urlparse
@@ -13,6 +14,9 @@ from ..config import load_config
 from ..db import session_scope
 from ..jobs import complete_job, fail_job, start_job
 from ..models import Domain, WhoisCheck
+
+
+logger = logging.getLogger(__name__)
 
 PARKED_KEYWORDS = [
     "domain for sale",
@@ -343,4 +347,4 @@ def run_batch(
 
 if __name__ == "__main__":
     count = run_batch()
-    print(f"Processed {count} domains")
+    logger.info("Processed %d domains", count)

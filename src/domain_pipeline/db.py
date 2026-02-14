@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import logging
 from contextlib import contextmanager
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 from .config import load_config
+
+
+logger = logging.getLogger(__name__)
 
 
 class Base(DeclarativeBase):
@@ -26,7 +30,8 @@ def session_scope():
     try:
         yield session
         session.commit()
-    except Exception:
+    except Exception as e:
+        logger.error("Database transaction failed, rolling back: %s", e)
         session.rollback()
         raise
     finally:

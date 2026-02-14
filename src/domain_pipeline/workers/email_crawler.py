@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Iterable, Optional
 
 from sqlalchemy import select
@@ -8,6 +9,9 @@ from ..config import load_config
 from ..db import session_scope
 from ..jobs import complete_job, fail_job, start_job
 from ..models import Contact, Domain, Organization, WhoisCheck
+
+
+logger = logging.getLogger(__name__)
 
 ROLE_PREFIXES = [
     "info",
@@ -111,4 +115,4 @@ def run_batch(limit: Optional[int] = None, scope: Optional[str] = None) -> int:
 
 if __name__ == "__main__":
     count = run_batch()
-    print(f"Processed {count} domains")
+    logger.info("Processed %d domains", count)
