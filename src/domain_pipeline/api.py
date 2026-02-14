@@ -146,7 +146,6 @@ def _validate_string_param(value: Optional[str], param_name: str, max_length: in
         )
 
 
-
 def _validate_file_path(file_path: str, param_name: str) -> None:
     """Validate file paths to prevent directory traversal.
     

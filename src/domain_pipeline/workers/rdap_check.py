@@ -15,7 +15,6 @@ from ..db import session_scope
 from ..jobs import complete_job, fail_job, start_job
 from ..models import Domain, WhoisCheck
 
-
 logger = logging.getLogger(__name__)
 
 PARKED_KEYWORDS = [

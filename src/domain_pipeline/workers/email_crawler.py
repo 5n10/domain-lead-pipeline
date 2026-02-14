@@ -10,7 +10,6 @@ from ..db import session_scope
 from ..jobs import complete_job, fail_job, start_job
 from ..models import Contact, Domain, Organization, WhoisCheck
 
-
 logger = logging.getLogger(__name__)
 
 ROLE_PREFIXES = [
