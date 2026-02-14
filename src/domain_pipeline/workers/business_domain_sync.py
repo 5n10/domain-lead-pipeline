@@ -111,7 +111,11 @@ def _sync_batch(session, businesses: list[Business]) -> tuple[int, int]:
 
 def run_batch(limit: Optional[int] = None, scope: Optional[str] = None, reset_cursor: bool = False) -> dict:
     config = load_config()
-    max_items = config.batch_size if limit is None else max(limit, 0)
+    # When limit is None or <= 0, process all businesses (no limit)
+    if limit is None or limit <= 0:
+        max_items = None  # No upper bound
+    else:
+        max_items = limit
 
     with session_scope() as session:
         run = start_job(session, JOB_NAME, scope=scope)
@@ -127,9 +131,12 @@ def run_batch(limit: Optional[int] = None, scope: Optional[str] = None, reset_cu
             domains_total = 0
             links_total = 0
 
-            while processed_total < max_items:
-                remaining = max_items - processed_total
-                chunk_size = min(config.batch_size, remaining)
+            while max_items is None or processed_total < max_items:
+                if max_items is not None:
+                    remaining = max_items - processed_total
+                    chunk_size = min(config.batch_size, remaining)
+                else:
+                    chunk_size = config.batch_size
 
                 stmt = select(Business).order_by(Business.created_at, Business.id).limit(chunk_size)
                 if cursor_ts and cursor_id:

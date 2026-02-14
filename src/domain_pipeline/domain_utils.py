@@ -4,6 +4,7 @@ from typing import Optional
 from urllib.parse import urlparse
 
 PUBLIC_EMAIL_DOMAINS = {
+    # Major free email providers
     "gmail.com",
     "googlemail.com",
     "yahoo.com",
@@ -35,6 +36,42 @@ PUBLIC_EMAIL_DOMAINS = {
     "mailinator.com",
     "guerrillamail.com",
     "sharklasers.com",
+    # ISP / telecom email providers (shared domains, not business websites)
+    "rogers.com",
+    "bellnet.ca",
+    "bell.net",
+    "sympatico.ca",
+    "cogeco.ca",
+    "shaw.ca",
+    "telus.net",
+    "videotron.ca",
+    "sasktel.net",
+    "eastlink.ca",
+    "comcast.net",
+    "sbcglobal.net",
+    "att.net",
+    "verizon.net",
+    "cox.net",
+    "charter.net",
+    "spectrum.net",
+    "centurylink.net",
+    "frontier.com",
+    "windstream.net",
+    "earthlink.net",
+    "optonline.net",
+    "btinternet.com",
+    "virginmedia.com",
+    "sky.com",
+    "talktalk.net",
+    "ntlworld.com",
+    "emirates.net.ae",
+    "eim.ae",
+    "etisalat.ae",
+    "du.ae",
+    "qatar.net.qa",
+    "ooredoo.qa",
+    "nyu.edu",
+    "gamil.com",  # Common misspelling of gmail
 }
 PUBLIC_EMAIL_DOMAIN_PREFIXES = (
     "gmail.",

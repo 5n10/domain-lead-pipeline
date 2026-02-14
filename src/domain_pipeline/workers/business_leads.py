@@ -91,21 +91,23 @@ def business_eligibility_filters(
     if require_contact:
         filters.append(_business_has_contact_expr())
 
-    # Exclude businesses whose email domain is hosted — they DO have a website,
-    # even though OSM didn't tag it. This is on by default for lead quality.
+    # Exclude businesses whose email domain is hosted or parked — they DO have
+    # a website, even though OSM didn't tag it. On by default for lead quality.
     # BUT: only exclude if the business has NO qualified (unhosted/unregistered)
     # domains — a business with both hosted and unhosted domains is still a lead.
     if exclude_hosted_email_domain:
-        hosted_expr = _business_has_domain_status_expr(HOSTED_DOMAIN_STATUSES)
+        hosted_parked_expr = _business_has_domain_status_expr(
+            HOSTED_DOMAIN_STATUSES | PARKED_DOMAIN_STATUSES
+        )
         qualified_expr = _business_has_domain_status_expr(
             VERIFIED_UNHOSTED_DOMAIN_STATUSES | UNREGISTERED_CANDIDATE_STATUSES
         )
-        if hosted_expr is not None:
+        if hosted_parked_expr is not None:
             if qualified_expr is not None:
-                # Exclude only if has hosted AND does NOT have any qualified domains
-                filters.append(not_(and_(hosted_expr, not_(qualified_expr))))
+                # Exclude only if has hosted/parked AND does NOT have any qualified domains
+                filters.append(not_(and_(hosted_parked_expr, not_(qualified_expr))))
             else:
-                filters.append(not_(hosted_expr))
+                filters.append(not_(hosted_parked_expr))
 
     # Only exclude hosted/parked domains when domain qualification is required
     if require_domain_qualification or require_unhosted_domain:
@@ -239,23 +241,29 @@ def _score_business(business: Business, feature: dict) -> tuple[float, dict]:
         score += SCORE_ANY_CATEGORY
 
     # Critical: if the business has no website_url in OSM data but we discovered
-    # a hosted domain from their email, they DO have a website — disqualify as lead.
+    # a hosted or parked domain from their email, they DO have a website — disqualify.
     # This catches businesses like info@theirsite.com where theirsite.com is hosted.
-    if not business.website_url and has_hosted_domain and not (has_verified_unhosted_domain or has_unregistered_candidate_domain):
+    has_qualified = has_verified_unhosted_domain or has_unregistered_candidate_domain
+    if not business.website_url and (has_hosted_domain or has_parked_domain) and not has_qualified:
         score = 0.0
 
-    # Quality caps for other domain situations
-    if has_hosted_domain and not (has_verified_unhosted_domain or has_unregistered_candidate_domain):
-        score = min(score, 60.0)
-    if has_unknown_domain and not (has_verified_unhosted_domain or has_unregistered_candidate_domain):
-        score = min(score, 55.0)
+    # Unknown domains (RDAP hasn't checked yet) are very likely hosted since they
+    # were extracted from business email addresses. Cap aggressively until checked.
+    if not business.website_url and has_unknown_domain and not has_qualified:
+        score = min(score, 10.0)
 
-    # Flag whether this business was disqualified because we found a hosted website
-    # from their email domain (despite OSM having no website_url for them)
+    # Quality caps for businesses WITH website_url
+    if has_hosted_domain and not has_qualified:
+        score = min(score, 60.0)
+    if has_unknown_domain and not has_qualified:
+        score = min(score, 35.0)
+
+    # Flag whether this business was disqualified because we found a hosted/parked
+    # website from their email domain (despite OSM having no website_url for them)
     disqualified_hosted_email = (
         not business.website_url
-        and has_hosted_domain
-        and not (has_verified_unhosted_domain or has_unregistered_candidate_domain)
+        and (has_hosted_domain or has_parked_domain)
+        and not has_qualified
     )
 
     reasons = {

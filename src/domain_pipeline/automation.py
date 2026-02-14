@@ -25,8 +25,8 @@ class AutomationSettings:
     categories: str = "all"
     areas_file: str = "config/areas.json"
     categories_file: str = "config/categories.json"
-    sync_limit: Optional[int] = 2000
-    rdap_limit: Optional[int] = 50
+    sync_limit: Optional[int] = None  # Process all businesses per cycle
+    rdap_limit: Optional[int] = 200
     rdap_statuses: list[str] = field(default_factory=lambda: ["new", "skipped", "rdap_error", "dns_error"])
     email_limit: Optional[int] = 0
     score_limit: Optional[int] = 0
