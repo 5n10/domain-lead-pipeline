@@ -37,6 +37,11 @@ from .workers.business_leads import (
 # Allowed configuration file paths for validation
 ALLOWED_CONFIG_FILES = ["config/areas.json", "config/categories.json"]
 
+# Input validation limits
+MAX_CATEGORY_LENGTH = 50
+MAX_CITY_LENGTH = 100
+MAX_PLATFORM_LENGTH = 50
+
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Add security headers to all responses."""
@@ -122,24 +127,26 @@ def _validate_string_param(value: Optional[str], param_name: str, max_length: in
     """Validate string query parameters to prevent abuse."""
     if value is None:
         return
+    # Treat empty strings as None (no filter) for optional parameters
     if not value.strip():
-        raise HTTPException(status_code=400, detail=f"Parameter '{param_name}' cannot be empty")
+        return
     if len(value) > max_length:
         raise HTTPException(status_code=400, detail=f"Parameter '{param_name}' exceeds maximum length of {max_length}")
-    # Reject parameters with unusual characters that could indicate injection attempts
+    # Reject parameters with control characters that could indicate injection attempts
     if any(char in value for char in ['\x00', '\n', '\r']):
-        raise HTTPException(status_code=400, detail=f"Parameter '{param_name}' contains invalid characters")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Parameter '{param_name}' contains control characters (null bytes, newlines, or carriage returns) which are not allowed"
+        )
 
 
 def _validate_file_path(file_path: str, param_name: str) -> None:
-    """Validate file paths to prevent directory traversal."""
+    """Validate file paths to prevent directory traversal.
+    
+    Uses a whitelist approach - only files in ALLOWED_CONFIG_FILES are permitted.
+    """
     if file_path not in ALLOWED_CONFIG_FILES:
         raise HTTPException(status_code=400, detail=f"Invalid {param_name}: must be one of {ALLOWED_CONFIG_FILES}")
-    # Additional validation: ensure the path doesn't try to escape
-    normalized = Path(file_path).resolve()
-    base_dir = Path(__file__).resolve().parent.parent
-    if not str(normalized).startswith(str(base_dir)):
-        raise HTTPException(status_code=400, detail=f"Invalid {param_name}: path traversal detected")
 
 
 class PipelineRunRequest(BaseModel):
@@ -277,9 +284,9 @@ def create_app() -> FastAPI:
         offset: int = Query(default=0, ge=0),
     ) -> dict:
         # Validate string parameters
-        _validate_string_param(category, "category", max_length=50)
-        _validate_string_param(city, "city", max_length=100)
-        _validate_string_param(platform, "platform", max_length=50)
+        _validate_string_param(category, "category", max_length=MAX_CATEGORY_LENGTH)
+        _validate_string_param(city, "city", max_length=MAX_CITY_LENGTH)
+        _validate_string_param(platform, "platform", max_length=MAX_PLATFORM_LENGTH)
         
         with session_scope() as session:
             exported_for_platform_exists = exists(
