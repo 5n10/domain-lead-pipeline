@@ -196,6 +196,36 @@ def load_business_features(session: Session, business_ids: list) -> dict:
     return features
 
 
+DOMAIN_LIKE_TLDS = {
+    ".com", ".ca", ".ae", ".qa", ".io", ".co", ".net", ".org",
+    ".biz", ".info", ".us", ".uk", ".app", ".dev", ".shop", ".store",
+}
+
+
+def _name_looks_like_domain(name: str) -> bool:
+    """Check if business name looks like a domain name (e.g. 'iRepair.ca')."""
+    if not name:
+        return False
+    clean = name.strip().lower().replace(" ", "")
+    return any(clean.endswith(tld) or tld + "/" in clean for tld in DOMAIN_LIKE_TLDS)
+
+
+def _is_branded_chain(business: Business) -> bool:
+    """Detect branded chains/franchises from OSM tags.
+
+    Businesses with brand/brand:wikidata/operator:wikidata tags are
+    known chains that definitely have corporate websites.
+    """
+    raw = business.raw or {}
+    # brand:wikidata is the strongest signal — a well-known entity
+    if raw.get("brand:wikidata") or raw.get("operator:wikidata"):
+        return True
+    # brand tag alone is also a strong signal (less strict)
+    if raw.get("brand"):
+        return True
+    return False
+
+
 def _score_business(business: Business, feature: dict) -> tuple[float, dict]:
     score = 0.0
     has_email = bool(feature["emails"])
@@ -207,12 +237,32 @@ def _score_business(business: Business, feature: dict) -> tuple[float, dict]:
     has_verified_unhosted_domain = bool(feature["verified_unhosted_domains"])
     has_unregistered_candidate_domain = bool(feature["unregistered_domains"])
     has_unknown_domain = bool(feature["unknown_domains"])
+    has_any_contact = has_email or has_phone
 
-    # Base: no website = strong lead signal
+    # --- Disqualification checks (before scoring) ---
+
+    # 1. Branded chains (Tim Hortons, Starbucks, etc.) definitely have websites
+    is_chain = _is_branded_chain(business)
+    if is_chain:
+        reasons = _build_reasons(business, feature, disqualify_reason="branded_chain")
+        return 0.0, reasons
+
+    # 2. Business name looks like a domain (iRepair.ca, SuperMart.ae)
+    name_is_domain = _name_looks_like_domain(business.name)
+
+    # 3. Hosted/parked domain from email — business has a real website
+    has_qualified = has_verified_unhosted_domain or has_unregistered_candidate_domain
+    if not business.website_url and (has_hosted_domain or has_parked_domain) and not has_qualified:
+        reasons = _build_reasons(business, feature, disqualify_reason="hosted_email_domain")
+        return 0.0, reasons
+
+    # --- Positive scoring ---
+
+    # Base: no website = lead signal (but weak without contacts)
     if not business.website_url:
         score += SCORE_NO_WEBSITE
 
-    # Contact signals
+    # Contact signals — these are CRITICAL for lead quality
     if has_business_email:
         score += SCORE_BUSINESS_EMAIL
     elif has_email:
@@ -226,8 +276,7 @@ def _score_business(business: Business, feature: dict) -> tuple[float, dict]:
     elif has_unregistered_candidate_domain:
         score += SCORE_UNREGISTERED_DOMAIN
     elif has_hosted_domain or has_parked_domain:
-        # Reduce score slightly — these businesses already have some web presence
-        score += 0
+        score += 0  # Already has web presence
     elif has_domain:
         score += SCORE_ANY_DOMAIN
 
@@ -240,40 +289,61 @@ def _score_business(business: Business, feature: dict) -> tuple[float, dict]:
     elif category:
         score += SCORE_ANY_CATEGORY
 
-    # Critical: if the business has no website_url in OSM data but we discovered
-    # a hosted or parked domain from their email, they DO have a website — disqualify.
-    # This catches businesses like info@theirsite.com where theirsite.com is hosted.
-    has_qualified = has_verified_unhosted_domain or has_unregistered_candidate_domain
-    if not business.website_url and (has_hosted_domain or has_parked_domain) and not has_qualified:
-        score = 0.0
+    # --- Quality caps ---
 
-    # Unknown domains (RDAP hasn't checked yet) are very likely hosted since they
-    # were extracted from business email addresses. Cap aggressively until checked.
+    # Unknown domains (RDAP hasn't checked yet) from business emails are very
+    # likely hosted. Cap aggressively until RDAP confirms status.
     if not business.website_url and has_unknown_domain and not has_qualified:
         score = min(score, 10.0)
 
-    # Quality caps for businesses WITH website_url
+    # Business name looks like a domain — likely has website, cap score
+    if name_is_domain:
+        score = min(score, 15.0)
+
+    # Businesses with NO contacts are extremely low quality — you can't reach them.
+    # They only get base "no website" + category points but are nearly useless.
+    if not has_any_contact:
+        score = min(score, 5.0)
+
+    # General caps for domain situations
     if has_hosted_domain and not has_qualified:
         score = min(score, 60.0)
     if has_unknown_domain and not has_qualified:
         score = min(score, 35.0)
 
-    # Flag whether this business was disqualified because we found a hosted/parked
-    # website from their email domain (despite OSM having no website_url for them)
-    disqualified_hosted_email = (
-        not business.website_url
-        and (has_hosted_domain or has_parked_domain)
-        and not has_qualified
-    )
+    disqualify_reason = None
+    if not has_any_contact:
+        disqualify_reason = "no_contacts"
+    elif name_is_domain:
+        disqualify_reason = "name_is_domain"
 
-    reasons = {
+    reasons = _build_reasons(business, feature, disqualify_reason=disqualify_reason)
+    return min(score, 100.0), reasons
+
+
+def _build_reasons(business: Business, feature: dict, disqualify_reason: str = None) -> dict:
+    """Build the score_reasons JSON for a business."""
+    category = (business.category or "").strip()
+    has_hosted = bool(feature["hosted_domains"])
+    has_parked = bool(feature["parked_domains"])
+    has_qualified = bool(feature["verified_unhosted_domains"]) or bool(feature["unregistered_domains"])
+    is_chain = _is_branded_chain(business)
+    raw = business.raw or {}
+
+    return {
         "category": category or None,
-        "has_email": has_email,
-        "has_business_email": has_business_email,
-        "has_phone": has_phone,
-        "has_hosted_domain": has_hosted_domain,
-        "has_parked_domain": has_parked_domain,
-        "disqualified_hosted_email_domain": disqualified_hosted_email,
+        "has_email": bool(feature["emails"]),
+        "has_business_email": bool(feature["business_emails"]),
+        "has_phone": bool(feature["phones"]),
+        "has_hosted_domain": has_hosted,
+        "has_parked_domain": has_parked,
+        "disqualify_reason": disqualify_reason,
+        "disqualified_hosted_email_domain": (
+            not business.website_url and (has_hosted or has_parked) and not has_qualified
+        ),
+        "is_branded_chain": is_chain,
+        "brand": raw.get("brand"),
+        "name_looks_like_domain": _name_looks_like_domain(business.name),
         "domain_count": len(feature["domains"]),
         "verified_unhosted_domain_count": len(feature["verified_unhosted_domains"]),
         "unregistered_domain_count": len(feature["unregistered_domains"]),
@@ -286,7 +356,6 @@ def _score_business(business: Business, feature: dict) -> tuple[float, dict]:
         "parked_domains": sorted(feature["parked_domains"]),
         "domain_status_counts": feature["domain_status_counts"],
     }
-    return min(score, 100.0), reasons
 
 
 def score_businesses(limit: Optional[int] = None, scope: Optional[str] = None, force_rescore: bool = False) -> int:
