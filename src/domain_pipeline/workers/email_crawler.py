@@ -71,7 +71,7 @@ def run_batch(limit: Optional[int] = None, scope: Optional[str] = None) -> int:
 
     with session_scope() as session:
         run = start_job(session, "enrich_role_emails", scope=scope)
-        # When limit is None, use config.batch_size. When limit <= 0, process all (no limit)
+        # When limit is None, use config batch size; when limit <= 0, process all items
         if limit is None:
             batch_size = config.batch_size
         elif limit <= 0:

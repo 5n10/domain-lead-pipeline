@@ -226,7 +226,8 @@ def process_domain(domain_row: Domain, rdap_client: RdapClient) -> WhoisCheck:
         timeout=rdap_client.config.dns_timeout,
         check_www=rdap_client.config.dns_check_www,
     )
-    # Use .get() for defensive dict access in case dns_result is malformed
+    # Defensive dict access - dns_check should always return these keys,
+    # but use .get() to handle unexpected errors gracefully
     has_a = dns_result.get("has_a", False)
     has_aaaa = dns_result.get("has_aaaa", False)
     has_cname = dns_result.get("has_cname", False)
@@ -316,7 +317,7 @@ def run_batch(
 
     with session_scope() as session:
         run = start_job(session, "rdap_check_domains", scope=scope)
-        # When limit is None, use config.batch_size. When limit <= 0, process all (no limit)
+        # When limit is None, use config batch size; when limit <= 0, process all items
         if limit is None:
             batch_size = config.batch_size
         elif limit <= 0:

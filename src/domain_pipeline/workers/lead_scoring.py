@@ -77,7 +77,7 @@ def _score_contact(contact: Contact, domain: Domain, features: dict) -> tuple[fl
 
 def run_batch(limit: Optional[int] = None, force_rescore: bool = False) -> int:
     config = load_config()
-    # When limit is None, use config.batch_size. When limit <= 0, process all (no limit)
+    # When limit is None, use config batch size; when limit <= 0, process all items
     if limit is None:
         batch_size = config.batch_size
     elif limit <= 0:
