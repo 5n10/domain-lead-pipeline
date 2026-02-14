@@ -78,7 +78,7 @@ def _query_records(domain: str, record_type: str, timeout: int) -> tuple[bool, l
         return answer.rrset is not None, values, None
     except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN):
         return False, [], None
-    except Exception as exc:
+    except (dns.exception.Timeout, dns.resolver.NoNameservers, dns.exception.DNSException) as exc:
         return False, [], exc.__class__.__name__
 
 

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Optional
 
 from sqlalchemy import and_, exists, func, not_, or_, select
+from sqlalchemy.orm import Session
 
 from ..config import load_config
 from ..db import session_scope
@@ -25,13 +26,28 @@ from ..models import (
     Domain,
 )
 
+# Category priority sets
 HIGH_PRIORITY_CATEGORIES = {"trades", "contractors"}
 MEDIUM_PRIORITY_CATEGORIES = {"professional_services", "retail", "health", "food", "auto"}
+
+# Domain status sets
 VERIFIED_UNHOSTED_DOMAIN_STATUSES = {"verified_unhosted", "mx_missing", "checked", "no_mx", "enriched", "no_contacts"}
 UNREGISTERED_CANDIDATE_STATUSES = {"unregistered_candidate"}
 HOSTED_DOMAIN_STATUSES = {"hosted"}
 PARKED_DOMAIN_STATUSES = {"parked"}
 UNKNOWN_DOMAIN_STATUSES = {"new", "rdap_error", "dns_error", "skipped"}
+
+# Scoring weights (extracted from _score_business logic)
+SCORE_NO_WEBSITE = 25
+SCORE_BUSINESS_EMAIL = 20
+SCORE_ANY_EMAIL = 5
+SCORE_PHONE = 15
+SCORE_VERIFIED_UNHOSTED_DOMAIN = 35
+SCORE_UNREGISTERED_DOMAIN = 20
+SCORE_ANY_DOMAIN = 10
+SCORE_HIGH_PRIORITY_CATEGORY = 20
+SCORE_MEDIUM_PRIORITY_CATEGORY = 10
+SCORE_ANY_CATEGORY = 5
 
 
 def _base_business_query():
@@ -89,7 +105,7 @@ def business_eligibility_filters(
     return filters
 
 
-def load_business_features(session, business_ids: list) -> dict:
+def load_business_features(session: Session, business_ids: list) -> dict:
     features = {
         business_id: {
             "emails": set(),
@@ -175,35 +191,35 @@ def _score_business(business: Business, feature: dict) -> tuple[float, dict]:
 
     # Base: no website = strong lead signal
     if not business.website_url:
-        score += 25
+        score += SCORE_NO_WEBSITE
 
     # Contact signals
     if has_business_email:
-        score += 20
+        score += SCORE_BUSINESS_EMAIL
     elif has_email:
-        score += 5
+        score += SCORE_ANY_EMAIL
     if has_phone:
-        score += 15
+        score += SCORE_PHONE
 
     # Domain signals
     if has_verified_unhosted_domain:
-        score += 35
+        score += SCORE_VERIFIED_UNHOSTED_DOMAIN
     elif has_unregistered_candidate_domain:
-        score += 20
+        score += SCORE_UNREGISTERED_DOMAIN
     elif has_hosted_domain or has_parked_domain:
         # Reduce score slightly — these businesses already have some web presence
         score += 0
     elif has_domain:
-        score += 10
+        score += SCORE_ANY_DOMAIN
 
     # Category signals
     category = (business.category or "").strip()
     if category in HIGH_PRIORITY_CATEGORIES:
-        score += 20
+        score += SCORE_HIGH_PRIORITY_CATEGORY
     elif category in MEDIUM_PRIORITY_CATEGORIES:
-        score += 10
+        score += SCORE_MEDIUM_PRIORITY_CATEGORY
     elif category:
-        score += 5
+        score += SCORE_ANY_CATEGORY
 
     # Quality caps: only apply light caps, don't block businesses entirely
     if has_hosted_domain and not (has_verified_unhosted_domain or has_unregistered_candidate_domain):
