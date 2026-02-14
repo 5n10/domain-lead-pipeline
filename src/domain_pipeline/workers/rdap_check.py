@@ -206,7 +206,8 @@ def extract_registrar(rdap_data: Optional[dict[str, Any]]) -> Optional[str]:
             vcard = entity.get("vcardArray", [])
             if isinstance(vcard, list) and len(vcard) > 1:
                 for item in vcard[1]:
-                    if item[0] == "fn":
+                    # vcard items should have at least 4 elements: [type, params, value_type, value]
+                    if isinstance(item, list) and len(item) > 3 and item[0] == "fn":
                         return item[3]
     return None
 
@@ -225,10 +226,11 @@ def process_domain(domain_row: Domain, rdap_client: RdapClient) -> WhoisCheck:
         timeout=rdap_client.config.dns_timeout,
         check_www=rdap_client.config.dns_check_www,
     )
-    has_a = dns_result["has_a"]
-    has_aaaa = dns_result["has_aaaa"]
-    has_cname = dns_result["has_cname"]
-    has_mx = dns_result["has_mx"]
+    # Use .get() for defensive dict access in case dns_result is malformed
+    has_a = dns_result.get("has_a", False)
+    has_aaaa = dns_result.get("has_aaaa", False)
+    has_cname = dns_result.get("has_cname", False)
+    has_mx = dns_result.get("has_mx", False)
     has_http, http_status, final_url, body, http_host = http_probe(
         domain_row.domain,
         timeout=rdap_client.config.http_timeout,
@@ -247,8 +249,9 @@ def process_domain(domain_row: Domain, rdap_client: RdapClient) -> WhoisCheck:
         )
 
     is_parked = False
-    if has_http or dns_result["cname_targets"]:
-        is_parked = detect_parked(body, final_url, dns_result["cname_targets"])
+    cname_targets = dns_result.get("cname_targets", [])
+    if has_http or cname_targets:
+        is_parked = detect_parked(body, final_url, cname_targets)
 
     registrar = extract_registrar(rdap_data)
 
@@ -313,12 +316,15 @@ def run_batch(
 
     with session_scope() as session:
         run = start_job(session, "rdap_check_domains", scope=scope)
-        batch_size = config.batch_size if limit is None else max(limit, 0)
+        # When limit is None, use config.batch_size. When limit <= 0, process all (no limit)
+        if limit is None:
+            batch_size = config.batch_size
+        elif limit <= 0:
+            batch_size = None  # No limit
+        else:
+            batch_size = limit
+        
         try:
-            if batch_size == 0:
-                complete_job(session, run, processed_count=0)
-                return 0
-
             target_statuses = statuses or ["new"]
             stmt = (
                 select(Domain)

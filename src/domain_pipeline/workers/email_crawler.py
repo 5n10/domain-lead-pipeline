@@ -71,12 +71,15 @@ def run_batch(limit: Optional[int] = None, scope: Optional[str] = None) -> int:
 
     with session_scope() as session:
         run = start_job(session, "enrich_role_emails", scope=scope)
-        batch_size = config.batch_size if limit is None else max(limit, 0)
+        # When limit is None, use config.batch_size. When limit <= 0, process all (no limit)
+        if limit is None:
+            batch_size = config.batch_size
+        elif limit <= 0:
+            batch_size = None  # No limit
+        else:
+            batch_size = limit
+        
         try:
-            if batch_size == 0:
-                complete_job(session, run, processed_count=0)
-                return 0
-
             stmt = (
                 select(Domain)
                 .where(Domain.status.in_(["verified_unhosted", "checked"]))

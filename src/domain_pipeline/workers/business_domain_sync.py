@@ -158,7 +158,7 @@ def run_batch(limit: Optional[int] = None, scope: Optional[str] = None, reset_cu
                     scope,
                     CURSOR_KEY,
                     _make_cursor(last.created_at, last.id),
-                    details={"last_business_name": last.name},
+                    details={"last_business_name": last.name or ""},
                     job_run_id=run.id,
                 )
 

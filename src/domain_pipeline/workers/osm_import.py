@@ -314,6 +314,9 @@ def import_osm(area: AreaConfig, categories: list[CategoryConfig]) -> int:
             min_lon = area.bbox["min_lon"]
             max_lat = area.bbox["max_lat"]
             max_lon = area.bbox["max_lon"]
+            # Validate bbox bounds to prevent division errors
+            if min_lat >= max_lat or min_lon >= max_lon:
+                raise ValueError(f"Invalid bbox for area {area.name}: min values must be less than max values")
             lat_step = (max_lat - min_lat) / split
             lon_step = (max_lon - min_lon) / split
             bbox_list = []
