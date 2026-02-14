@@ -24,7 +24,8 @@ def _parse_cursor(value: Optional[str]) -> tuple[Optional[datetime], Optional[UU
     try:
         ts_raw, id_raw = value.split("|", 1)
         return datetime.fromisoformat(ts_raw), UUID(id_raw)
-    except Exception:
+    except (ValueError, TypeError):
+        # Invalid cursor format - return None to restart from beginning
         return None, None
 
 

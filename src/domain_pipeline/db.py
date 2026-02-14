@@ -11,7 +11,12 @@ class Base(DeclarativeBase):
 
 
 _config = load_config()
-_engine = create_engine(_config.database_url, pool_pre_ping=True)
+_engine = create_engine(
+    _config.database_url,
+    pool_pre_ping=True,
+    pool_recycle=3600,  # Recycle connections after 1 hour to prevent stale connections
+    pool_timeout=30,  # Timeout after 30 seconds waiting for a connection from the pool
+)
 SessionLocal = sessionmaker(bind=_engine, expire_on_commit=False)
 
 

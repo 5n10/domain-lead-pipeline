@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from threading import Event, Lock, Thread
@@ -8,6 +9,9 @@ from typing import Any, Optional
 from .config import load_config
 from .pipeline import run_once
 from .workers.business_leads import ensure_daily_target_generated
+
+
+logger = logging.getLogger(__name__)
 
 
 def _utc_now() -> str:
@@ -172,9 +176,9 @@ class AutomationController:
         while not self._stop_event.is_set():
             try:
                 self._run_cycle(trigger="scheduled")
-            except Exception:
+            except Exception as e:
                 # Error is stored in state; keep loop alive for next interval.
-                pass
+                logger.exception("Error during scheduled run cycle: %s", e)
 
             wait_seconds = self._snapshot_settings().interval_seconds
             if self._stop_event.wait(wait_seconds):

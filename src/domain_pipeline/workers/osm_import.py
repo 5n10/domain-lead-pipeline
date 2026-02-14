@@ -82,7 +82,7 @@ def resolve_free_text_area(location_text: str) -> AreaConfig:
         )
         resp.raise_for_status()
         results = resp.json()
-    except Exception as exc:
+    except (requests.RequestException, ValueError) as exc:
         raise ValueError(f"Geocoding failed for '{location_text}': {exc}") from exc
 
     if not results:
@@ -288,140 +288,141 @@ def chunked(items: list[CategoryFilter], size: int) -> list[list[CategoryFilter]
 
 def import_osm(area: AreaConfig, categories: list[CategoryConfig]) -> int:
     config = load_config()
-    session = requests.Session()
-    session.headers.update({"User-Agent": config.http_user_agent})
+    
+    with requests.Session() as session:
+        session.headers.update({"User-Agent": config.http_user_agent})
 
-    endpoints_env = os.getenv("OVERPASS_ENDPOINTS")
-    if endpoints_env:
-        endpoints = [endpoint.strip() for endpoint in endpoints_env.split(",") if endpoint.strip()]
-    else:
-        endpoints = [config.overpass_endpoint]
+        endpoints_env = os.getenv("OVERPASS_ENDPOINTS")
+        if endpoints_env:
+            endpoints = [endpoint.strip() for endpoint in endpoints_env.split(",") if endpoint.strip()]
+        else:
+            endpoints = [config.overpass_endpoint]
 
-    filters: list[CategoryFilter] = []
-    for category in categories:
-        filters.extend(category.filters)
+        filters: list[CategoryFilter] = []
+        for category in categories:
+            filters.extend(category.filters)
 
-    inserted = 0
-    chunk_size = int(os.getenv("OVERPASS_FILTER_CHUNK", "3"))
-    element_types_env = os.getenv("OVERPASS_ELEMENT_TYPES", "nwr")
-    element_types = [entry.strip() for entry in element_types_env.split(",") if entry.strip()]
-    retry_limit = int(os.getenv("OVERPASS_RETRIES", "3"))
-    retry_delay = int(os.getenv("OVERPASS_RETRY_DELAY", "5"))
-    split = int(os.getenv("OVERPASS_BBOX_SPLIT", "1"))
-    if area.bbox and split > 1:
-        min_lat = area.bbox["min_lat"]
-        min_lon = area.bbox["min_lon"]
-        max_lat = area.bbox["max_lat"]
-        max_lon = area.bbox["max_lon"]
-        lat_step = (max_lat - min_lat) / split
-        lon_step = (max_lon - min_lon) / split
-        bbox_list = []
-        for i in range(split):
-            for j in range(split):
-                bbox_list.append(
-                    {
-                        "min_lat": min_lat + i * lat_step,
-                        "min_lon": min_lon + j * lon_step,
-                        "max_lat": min_lat + (i + 1) * lat_step,
-                        "max_lon": min_lon + (j + 1) * lon_step,
-                    }
-                )
-    else:
-        bbox_list = [None]
+        inserted = 0
+        chunk_size = int(os.getenv("OVERPASS_FILTER_CHUNK", "3"))
+        element_types_env = os.getenv("OVERPASS_ELEMENT_TYPES", "nwr")
+        element_types = [entry.strip() for entry in element_types_env.split(",") if entry.strip()]
+        retry_limit = int(os.getenv("OVERPASS_RETRIES", "3"))
+        retry_delay = int(os.getenv("OVERPASS_RETRY_DELAY", "5"))
+        split = int(os.getenv("OVERPASS_BBOX_SPLIT", "1"))
+        if area.bbox and split > 1:
+            min_lat = area.bbox["min_lat"]
+            min_lon = area.bbox["min_lon"]
+            max_lat = area.bbox["max_lat"]
+            max_lon = area.bbox["max_lon"]
+            lat_step = (max_lat - min_lat) / split
+            lon_step = (max_lon - min_lon) / split
+            bbox_list = []
+            for i in range(split):
+                for j in range(split):
+                    bbox_list.append(
+                        {
+                            "min_lat": min_lat + i * lat_step,
+                            "min_lon": min_lon + j * lon_step,
+                            "max_lat": min_lat + (i + 1) * lat_step,
+                            "max_lon": min_lon + (j + 1) * lon_step,
+                        }
+                    )
+        else:
+            bbox_list = [None]
 
-    for bbox in bbox_list:
-        for filt_chunk in chunked(filters, chunk_size):
-            query = build_query(area, filt_chunk, config.overpass_timeout, element_types, bbox_override=bbox)
+        for bbox in bbox_list:
+            for filt_chunk in chunked(filters, chunk_size):
+                query = build_query(area, filt_chunk, config.overpass_timeout, element_types, bbox_override=bbox)
 
-            data = None
-            last_error = None
-            for endpoint in endpoints:
-                for attempt in range(1, retry_limit + 1):
-                    try:
-                        resp = session.post(endpoint, data=query.encode("utf-8"), timeout=config.overpass_timeout)
-                    except requests.RequestException as exc:
-                        last_error = exc
-                        time.sleep(retry_delay)
-                        continue
+                data = None
+                last_error = None
+                for endpoint in endpoints:
+                    for attempt in range(1, retry_limit + 1):
+                        try:
+                            resp = session.post(endpoint, data=query.encode("utf-8"), timeout=config.overpass_timeout)
+                        except requests.RequestException as exc:
+                            last_error = exc
+                            time.sleep(retry_delay)
+                            continue
 
-                    if resp.status_code in (429, 504):
-                        last_error = RuntimeError(f"Overpass {endpoint} returned {resp.status_code}")
-                        time.sleep(retry_delay)
-                        continue
+                        if resp.status_code in (429, 504):
+                            last_error = RuntimeError(f"Overpass {endpoint} returned {resp.status_code}")
+                            time.sleep(retry_delay)
+                            continue
 
-                    if resp.status_code != 200:
-                        last_error = RuntimeError(f"Overpass {endpoint} returned {resp.status_code}")
+                        if resp.status_code != 200:
+                            last_error = RuntimeError(f"Overpass {endpoint} returned {resp.status_code}")
+                            break
+
+                        try:
+                            data = resp.json()
+                            break
+                        except ValueError:
+                            snippet = resp.text[:200].replace("\n", " ")
+                            last_error = RuntimeError(f"Non-JSON response from {endpoint}: {snippet}")
+                            time.sleep(retry_delay)
+                            continue
+
+                    if data is not None:
                         break
 
-                    try:
-                        data = resp.json()
-                        break
-                    except ValueError:
-                        snippet = resp.text[:200].replace("\n", " ")
-                        last_error = RuntimeError(f"Non-JSON response from {endpoint}: {snippet}")
-                        time.sleep(retry_delay)
-                        continue
+                if data is None:
+                    raise RuntimeError(f"Overpass failed for area {area.name}: {last_error}")
 
-                if data is not None:
-                    break
+                elements = data.get("elements", [])
+                if not elements:
+                    continue
 
-            if data is None:
-                raise RuntimeError(f"Overpass failed for area {area.name}: {last_error}")
+                with session_scope() as db:
+                    city = get_or_create_city(db, area)
 
-            elements = data.get("elements", [])
-            if not elements:
-                continue
+                    for element in elements:
+                        tags = element.get("tags", {})
+                        source_id = f"{element.get('type')}/{element.get('id')}"
 
-            with session_scope() as db:
-                city = get_or_create_city(db, area)
-
-                for element in elements:
-                    tags = element.get("tags", {})
-                    source_id = f"{element.get('type')}/{element.get('id')}"
-
-                    existing = (
-                        db.execute(
-                            select(Business.id).where(Business.source == "osm").where(Business.source_id == source_id)
-                        )
-                        .scalars()
-                        .first()
-                    )
-                    if existing:
-                        continue
-
-                    lat, lon = element_location(element)
-                    category = match_category(filters, tags) or classify_business(tags)
-                    website = extract_website(tags)
-                    address = extract_address(tags)
-
-                    business = Business(
-                        source="osm",
-                        source_id=source_id,
-                        name=tags.get("name"),
-                        category=category,
-                        website_url=website,
-                        address=address,
-                        lat=lat,
-                        lon=lon,
-                        raw=tags,
-                        city_id=city.id,
-                    )
-                    db.add(business)
-                    db.flush()
-
-                    contacts = extract_contacts(tags)
-                    for contact_type, value in contacts:
-                        db.add(
-                            BusinessContact(
-                                business_id=business.id,
-                                contact_type=contact_type,
-                                value=value,
-                                source="osm",
+                        existing = (
+                            db.execute(
+                                select(Business.id).where(Business.source == "osm").where(Business.source_id == source_id)
                             )
+                            .scalars()
+                            .first()
                         )
+                        if existing:
+                            continue
 
-                    inserted += 1
+                        lat, lon = element_location(element)
+                        category = match_category(filters, tags) or classify_business(tags)
+                        website = extract_website(tags)
+                        address = extract_address(tags)
 
-            time.sleep(int(os.getenv("OVERPASS_SLEEP", "1")))
+                        business = Business(
+                            source="osm",
+                            source_id=source_id,
+                            name=tags.get("name"),
+                            category=category,
+                            website_url=website,
+                            address=address,
+                            lat=lat,
+                            lon=lon,
+                            raw=tags,
+                            city_id=city.id,
+                        )
+                        db.add(business)
+                        db.flush()
 
-    return inserted
+                        contacts = extract_contacts(tags)
+                        for contact_type, value in contacts:
+                            db.add(
+                                BusinessContact(
+                                    business_id=business.id,
+                                    contact_type=contact_type,
+                                    value=value,
+                                    source="osm",
+                                )
+                            )
+
+                        inserted += 1
+
+                time.sleep(int(os.getenv("OVERPASS_SLEEP", "1")))
+
+        return inserted

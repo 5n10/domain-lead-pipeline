@@ -53,6 +53,11 @@ def main() -> None:
     args = parser.parse_args()
 
     path = Path(args.file)
+    if not path.exists():
+        raise FileNotFoundError(f"File not found: {path}")
+    if not path.is_file():
+        raise ValueError(f"Path is not a file: {path}")
+    
     domains = read_domains(path)
     inserted = ingest(domains)
     print(f"Inserted {inserted} domains")

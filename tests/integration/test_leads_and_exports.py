@@ -92,7 +92,8 @@ def test_export_business_leads_fills_limit_after_sql_filters(monkeypatch, tmp_pa
     )
 
     assert path is not None
-    rows = list(csv.reader(path.open("r", encoding="utf-8")))
+    with path.open("r", encoding="utf-8") as f:
+        rows = list(csv.reader(f))
     assert len(rows) == 2
     assert rows[1][0] == "Eligible Export"
 
