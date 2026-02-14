@@ -34,6 +34,10 @@ from .workers.business_leads import (
 )
 
 
+# Allowed configuration file paths for validation
+ALLOWED_CONFIG_FILES = ["config/areas.json", "config/categories.json"]
+
+
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Add security headers to all responses."""
     
@@ -43,8 +47,6 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Frame-Options"] = "DENY"
         # Prevent MIME type sniffing
         response.headers["X-Content-Type-Options"] = "nosniff"
-        # Enable XSS protection (legacy browsers)
-        response.headers["X-XSS-Protection"] = "1; mode=block"
         # Referrer policy
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         # Content Security Policy for API
@@ -131,9 +133,8 @@ def _validate_string_param(value: Optional[str], param_name: str, max_length: in
 
 def _validate_file_path(file_path: str, param_name: str) -> None:
     """Validate file paths to prevent directory traversal."""
-    allowed_paths = ["config/areas.json", "config/categories.json"]
-    if file_path not in allowed_paths:
-        raise HTTPException(status_code=400, detail=f"Invalid {param_name}: must be one of {allowed_paths}")
+    if file_path not in ALLOWED_CONFIG_FILES:
+        raise HTTPException(status_code=400, detail=f"Invalid {param_name}: must be one of {ALLOWED_CONFIG_FILES}")
     # Additional validation: ensure the path doesn't try to escape
     normalized = Path(file_path).resolve()
     base_dir = Path(__file__).resolve().parent.parent
