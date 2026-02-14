@@ -11,6 +11,7 @@ type LeadFilters = {
   requireUnhostedDomain: boolean;
   requireDomainQualification: boolean;
   requireNoWebsite: boolean;
+  excludeHostedEmailDomain: boolean;
   onlyUnexported: boolean;
   limit: string;
 };
@@ -23,6 +24,7 @@ const defaultFilters: LeadFilters = {
   requireUnhostedDomain: false,
   requireDomainQualification: false,
   requireNoWebsite: true,
+  excludeHostedEmailDomain: true,
   onlyUnexported: false,
   limit: "200"
 };
@@ -85,8 +87,8 @@ export default function App() {
   const [exportRequireDomainQualification, setExportRequireDomainQualification] = useState<boolean>(false);
   const [autoArea, setAutoArea] = useState<string>("");
   const [autoIntervalSeconds, setAutoIntervalSeconds] = useState<string>("900");
-  const [autoSyncLimit, setAutoSyncLimit] = useState<string>("100");
-  const [autoRdapLimit, setAutoRdapLimit] = useState<string>("5");
+  const [autoSyncLimit, setAutoSyncLimit] = useState<string>("2000");
+  const [autoRdapLimit, setAutoRdapLimit] = useState<string>("50");
   const [autoBusinessScoreLimit, setAutoBusinessScoreLimit] = useState<string>("500");
   const [dailyTargetEnabled, setDailyTargetEnabled] = useState<boolean>(true);
   const [dailyTargetAllowRecycle, setDailyTargetAllowRecycle] = useState<boolean>(true);
@@ -143,6 +145,7 @@ export default function App() {
       params.set("require_unhosted_domain", String(nextFilters.requireUnhostedDomain));
       params.set("require_domain_qualification", String(nextFilters.requireDomainQualification));
       params.set("require_no_website", String(nextFilters.requireNoWebsite));
+      params.set("exclude_hosted_email_domain", String(nextFilters.excludeHostedEmailDomain));
       params.set("only_unexported", String(nextFilters.onlyUnexported));
       params.set("limit", nextFilters.limit.trim() || "200");
 
@@ -721,6 +724,14 @@ export default function App() {
               onChange={(event) => setFilters((prev) => ({ ...prev, requireNoWebsite: event.target.checked }))}
             />
             No website only
+          </label>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={filters.excludeHostedEmailDomain}
+              onChange={(event) => setFilters((prev) => ({ ...prev, excludeHostedEmailDomain: event.target.checked }))}
+            />
+            Exclude hosted email domains
           </label>
           <label className="check">
             <input

@@ -56,7 +56,7 @@ def load_config() -> Config:
         dns_check_www=os.getenv("DNS_CHECK_WWW", "true").strip().lower() in {"1", "true", "yes", "on"},
         http_timeout=int(os.getenv("HTTP_TIMEOUT", "10")),
         http_user_agent=os.getenv("HTTP_USER_AGENT", "domain-lead-pipeline/0.1"),
-        tcp_probe_enabled=os.getenv("TCP_PROBE_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"},
+        tcp_probe_enabled=os.getenv("TCP_PROBE_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"},
         tcp_probe_timeout=int(os.getenv("TCP_PROBE_TIMEOUT", "3")),
         tcp_probe_ports=tuple(
             int(port.strip())

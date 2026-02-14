@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import socket
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Optional
 from urllib.parse import urlparse
 
@@ -125,34 +126,67 @@ def dns_check(domain: str, timeout: int, check_www: bool) -> dict[str, Any]:
     }
 
 
+def _http_probe_single(
+    url: str,
+    host: str,
+    headers: dict[str, str],
+    timeout: int,
+) -> Optional[tuple[bool, int, str, Optional[str], str]]:
+    """Probe a single scheme://host URL. Returns result tuple or None on failure."""
+    try:
+        resp = requests.get(url, headers=headers, timeout=timeout, allow_redirects=True)
+        status = resp.status_code
+        if status >= 500:
+            return None
+        final_url = resp.url
+        content_type = resp.headers.get("Content-Type", "")
+        if "text" in content_type or "html" in content_type:
+            body = resp.text[:200_000]
+        else:
+            body = None
+        return True, status, final_url, body, host
+    except requests.RequestException:
+        return None
+
+
 def http_probe(
     domain: str,
     timeout: int,
     user_agent: str,
     check_www: bool,
 ) -> tuple[bool, Optional[int], Optional[str], Optional[str], Optional[str]]:
+    """Probe domain for HTTP(S) service, trying all scheme/host variants concurrently.
+
+    Launches up to 4 probes in parallel (https/http × apex/www) and returns
+    the first successful result. This reduces worst-case latency from ~4×timeout
+    to ~1×timeout.
+    """
     headers = {"User-Agent": user_agent}
     hosts = [domain]
     if check_www:
         hosts.append(f"www.{domain}")
 
+    # Build all URL variants to probe
+    # Prefer HTTPS over HTTP, apex over www — priority order matters for tie-breaking
+    probe_args = []
     for host in hosts:
         for scheme in ("https", "http"):
-            url = f"{scheme}://{host}"
-            try:
-                resp = requests.get(url, headers=headers, timeout=timeout, allow_redirects=True)
-                status = resp.status_code
-                if status >= 500:
-                    continue
-                final_url = resp.url
-                content_type = resp.headers.get("Content-Type", "")
-                if "text" in content_type or "html" in content_type:
-                    body = resp.text[:200_000]
-                else:
-                    body = None
-                return True, status, final_url, body, host
-            except requests.RequestException:
-                continue
+            probe_args.append((f"{scheme}://{host}", host))
+
+    # Run all probes concurrently
+    with ThreadPoolExecutor(max_workers=len(probe_args)) as executor:
+        futures = {
+            executor.submit(_http_probe_single, url, host, headers, timeout): (url, host)
+            for url, host in probe_args
+        }
+        for future in as_completed(futures):
+            result = future.result()
+            if result is not None:
+                # Cancel remaining futures (best-effort; they'll finish in background)
+                for f in futures:
+                    f.cancel()
+                return result
+
     return False, None, None, None, None
 
 
@@ -310,10 +344,18 @@ def run_batch(
     limit: Optional[int] = None,
     scope: Optional[str] = None,
     statuses: Optional[list[str]] = None,
+    auto_rescore: bool = True,
 ) -> int:
+    """Run RDAP checks on domains and optionally rescore affected businesses.
+
+    When auto_rescore=True (default), any businesses linked to domains whose
+    status changed will be automatically rescored. This ensures lead scores
+    stay up-to-date when domains transition (e.g., "new" → "hosted").
+    """
     config = load_config()
     rdap_client = RdapClient()
     processed = 0
+    status_changes = 0
 
     with session_scope() as session:
         run = start_job(session, "rdap_check_domains", scope=scope)
@@ -337,19 +379,42 @@ def run_batch(
             domains = session.execute(stmt).scalars().all()
 
             for domain_row in domains:
+                old_status = domain_row.status
                 check = process_domain(domain_row, rdap_client)
                 session.add(check)
                 processed += 1
+                if domain_row.status != old_status:
+                    status_changes += 1
 
             complete_job(
                 session,
                 run,
                 processed_count=processed,
-                details={"statuses": target_statuses},
+                details={
+                    "statuses": target_statuses,
+                    "status_changes": status_changes,
+                },
             )
         except Exception as exc:
             fail_job(session, run, error=str(exc), details={"statuses": statuses or ["new"]})
             raise
+
+    # After the RDAP transaction commits, rescore businesses linked to domains
+    # that changed status. Runs in a separate transaction to avoid holding locks.
+    # score_businesses() detects stale scores via Domain.updated_at > Business.scored_at.
+    rescored = 0
+    if auto_rescore and status_changes > 0:
+        try:
+            from .business_leads import score_businesses
+            rescored = score_businesses(limit=None, force_rescore=False)
+            logger.info(
+                "Auto-rescored %d businesses after %d domain status changes",
+                rescored,
+                status_changes,
+            )
+        except Exception as exc:
+            # Don't fail the RDAP batch if rescoring fails — domain data is already saved
+            logger.warning("Auto-rescore after RDAP failed: %s", exc)
 
     return processed
 

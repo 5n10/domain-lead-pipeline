@@ -85,10 +85,27 @@ def business_eligibility_filters(
     require_contact: bool,
     require_unhosted_domain: bool,
     require_domain_qualification: bool,
+    exclude_hosted_email_domain: bool = True,
 ):
     filters = []
     if require_contact:
         filters.append(_business_has_contact_expr())
+
+    # Exclude businesses whose email domain is hosted — they DO have a website,
+    # even though OSM didn't tag it. This is on by default for lead quality.
+    # BUT: only exclude if the business has NO qualified (unhosted/unregistered)
+    # domains — a business with both hosted and unhosted domains is still a lead.
+    if exclude_hosted_email_domain:
+        hosted_expr = _business_has_domain_status_expr(HOSTED_DOMAIN_STATUSES)
+        qualified_expr = _business_has_domain_status_expr(
+            VERIFIED_UNHOSTED_DOMAIN_STATUSES | UNREGISTERED_CANDIDATE_STATUSES
+        )
+        if hosted_expr is not None:
+            if qualified_expr is not None:
+                # Exclude only if has hosted AND does NOT have any qualified domains
+                filters.append(not_(and_(hosted_expr, not_(qualified_expr))))
+            else:
+                filters.append(not_(hosted_expr))
 
     # Only exclude hosted/parked domains when domain qualification is required
     if require_domain_qualification or require_unhosted_domain:
@@ -221,11 +238,25 @@ def _score_business(business: Business, feature: dict) -> tuple[float, dict]:
     elif category:
         score += SCORE_ANY_CATEGORY
 
-    # Quality caps: only apply light caps, don't block businesses entirely
+    # Critical: if the business has no website_url in OSM data but we discovered
+    # a hosted domain from their email, they DO have a website — disqualify as lead.
+    # This catches businesses like info@theirsite.com where theirsite.com is hosted.
+    if not business.website_url and has_hosted_domain and not (has_verified_unhosted_domain or has_unregistered_candidate_domain):
+        score = 0.0
+
+    # Quality caps for other domain situations
     if has_hosted_domain and not (has_verified_unhosted_domain or has_unregistered_candidate_domain):
         score = min(score, 60.0)
     if has_unknown_domain and not (has_verified_unhosted_domain or has_unregistered_candidate_domain):
         score = min(score, 55.0)
+
+    # Flag whether this business was disqualified because we found a hosted website
+    # from their email domain (despite OSM having no website_url for them)
+    disqualified_hosted_email = (
+        not business.website_url
+        and has_hosted_domain
+        and not (has_verified_unhosted_domain or has_unregistered_candidate_domain)
+    )
 
     reasons = {
         "category": category or None,
@@ -234,6 +265,7 @@ def _score_business(business: Business, feature: dict) -> tuple[float, dict]:
         "has_phone": has_phone,
         "has_hosted_domain": has_hosted_domain,
         "has_parked_domain": has_parked_domain,
+        "disqualified_hosted_email_domain": disqualified_hosted_email,
         "domain_count": len(feature["domains"]),
         "verified_unhosted_domain_count": len(feature["verified_unhosted_domains"]),
         "unregistered_domain_count": len(feature["unregistered_domains"]),
@@ -327,6 +359,7 @@ def export_business_leads(
     require_contact: bool = True,
     require_unhosted_domain: bool = False,
     require_domain_qualification: bool = True,
+    exclude_hosted_email_domain: bool = True,
     max_written: Optional[int] = None,
     exclude_previously_exported: bool = False,
 ) -> Optional[Path]:
@@ -389,6 +422,7 @@ def export_business_leads(
                 require_contact=require_contact,
                 require_unhosted_domain=require_unhosted_domain,
                 require_domain_qualification=require_domain_qualification,
+                exclude_hosted_email_domain=exclude_hosted_email_domain,
             ):
                 stmt = stmt.where(expression)
             if final_limit is not None:
@@ -541,6 +575,7 @@ def ensure_daily_target_generated(
     require_contact: bool = True,
     require_unhosted_domain: bool = False,
     require_domain_qualification: bool = True,
+    exclude_hosted_email_domain: bool = True,
     allow_recycle: bool = True,
 ) -> dict:
     summary = daily_target_summary(
@@ -557,6 +592,7 @@ def ensure_daily_target_generated(
         require_contact=require_contact,
         require_unhosted_domain=require_unhosted_domain,
         require_domain_qualification=require_domain_qualification,
+        exclude_hosted_email_domain=exclude_hosted_email_domain,
         max_written=summary["remaining_count"],
         exclude_previously_exported=True,
     )
@@ -573,6 +609,7 @@ def ensure_daily_target_generated(
             require_contact=require_contact,
             require_unhosted_domain=require_unhosted_domain,
             require_domain_qualification=require_domain_qualification,
+            exclude_hosted_email_domain=exclude_hosted_email_domain,
             max_written=updated["remaining_count"],
             exclude_previously_exported=False,
         )

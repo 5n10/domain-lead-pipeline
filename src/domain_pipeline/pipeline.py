@@ -63,7 +63,8 @@ def run_once(
 ) -> dict:
     imported = maybe_import_businesses(area, categories, areas_file, categories_file)
     synced = sync_business_domains(limit=sync_limit, scope=area, reset_cursor=False)
-    rdap_processed = run_rdap_checks(limit=rdap_limit, scope=area, statuses=rdap_statuses)
+    # Disable auto_rescore in RDAP since run_once already calls score_businesses below
+    rdap_processed = run_rdap_checks(limit=rdap_limit, scope=area, statuses=rdap_statuses, auto_rescore=False)
     email_processed = run_role_email_enrichment(limit=email_limit, scope=area)
     scored = run_lead_scoring(limit=score_limit, force_rescore=False)
     export_path = export_csv(platform, min_score=min_score)

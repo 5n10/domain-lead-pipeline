@@ -26,6 +26,8 @@ from .models import (
     JobRun,
 )
 from .pipeline import run_once
+from .workers.business_domain_sync import run_batch as sync_business_domains
+from .workers.rdap_check import run_batch as run_rdap_checks
 from .workers.business_leads import (
     business_eligibility_filters,
     export_business_leads,
@@ -188,6 +190,7 @@ class BusinessExportRequest(BaseModel):
     require_contact: bool = True
     require_unhosted_domain: bool = False
     require_domain_qualification: bool = True
+    exclude_hosted_email_domain: bool = True
 
 
 class AutomationSettingsRequest(BaseModel):
@@ -284,6 +287,7 @@ def create_app() -> FastAPI:
         require_unhosted_domain: bool = Query(default=False),
         require_domain_qualification: bool = Query(default=False),
         require_no_website: bool = Query(default=True),
+        exclude_hosted_email_domain: bool = Query(default=True),
         only_unexported: bool = Query(default=False),
         platform: str = Query(default="csv_business"),
         limit: int = Query(default=200, ge=1, le=2000),
@@ -317,6 +321,7 @@ def create_app() -> FastAPI:
                     require_contact=require_contact,
                     require_unhosted_domain=require_unhosted_domain,
                     require_domain_qualification=require_domain_qualification,
+                    exclude_hosted_email_domain=exclude_hosted_email_domain,
                 )
             )
 
@@ -441,6 +446,35 @@ def create_app() -> FastAPI:
         )
         return {"processed": processed}
 
+    @app.post("/api/actions/validate-domains", dependencies=[Depends(require_mutation_auth)])
+    def api_validate_domains(
+        sync_limit: Optional[int] = Query(default=None),
+        rdap_limit: Optional[int] = Query(default=None),
+        rescore: bool = Query(default=True),
+    ) -> dict:
+        """Bulk domain sync + RDAP check + rescore.
+
+        Syncs email domains for all businesses, runs RDAP checks to detect
+        hosted/parked/unhosted domains, then rescores affected businesses.
+        This catches businesses that appear to have no website in OSM data
+        but actually have a website discoverable from their email domain.
+        """
+        synced = sync_business_domains(limit=sync_limit, reset_cursor=False)
+        # Disable auto_rescore since we explicitly call score_businesses below
+        rdap_processed = run_rdap_checks(
+            limit=rdap_limit,
+            statuses=["new", "skipped", "rdap_error", "dns_error"],
+            auto_rescore=False,
+        )
+        scored = 0
+        if rescore:
+            scored = score_businesses(limit=None, force_rescore=False)
+        return {
+            "synced": synced,
+            "rdap_processed": rdap_processed,
+            "rescored": scored,
+        }
+
     @app.post("/api/actions/business-export", dependencies=[Depends(require_mutation_auth)])
     def api_export_businesses(payload: BusinessExportRequest) -> dict:
         path = export_business_leads(
@@ -450,6 +484,7 @@ def create_app() -> FastAPI:
             require_contact=payload.require_contact,
             require_unhosted_domain=payload.require_unhosted_domain,
             require_domain_qualification=payload.require_domain_qualification,
+            exclude_hosted_email_domain=payload.exclude_hosted_email_domain,
         )
         return {"path": str(path) if path else None}
 
