@@ -34,6 +34,7 @@ from .workers.business_leads import (
     load_business_features,
     score_businesses,
 )
+from .workers.google_places import run_batch as run_google_places_enrich, verify_websites
 
 
 # Allowed configuration file paths for validation
@@ -191,6 +192,18 @@ class BusinessExportRequest(BaseModel):
     require_unhosted_domain: bool = False
     require_domain_qualification: bool = True
     exclude_hosted_email_domain: bool = True
+
+
+class GooglePlacesEnrichRequest(BaseModel):
+    limit: Optional[int] = None
+    priority: str = "no_contacts"  # "no_contacts", "no_phone", "all"
+    rescore: bool = True
+
+
+class GooglePlacesVerifyRequest(BaseModel):
+    limit: Optional[int] = None
+    min_score: float = 30.0
+    rescore: bool = True
 
 
 class AutomationSettingsRequest(BaseModel):
@@ -474,6 +487,42 @@ def create_app() -> FastAPI:
             "rdap_processed": rdap_processed,
             "rescored": scored,
         }
+
+    @app.post("/api/actions/enrich-google-places", dependencies=[Depends(require_mutation_auth)])
+    def api_enrich_google_places(payload: GooglePlacesEnrichRequest) -> dict:
+        """Enrich businesses with Google Places data (phone, website, rating).
+
+        Free tier: 10,000 calls/month on Essentials SKUs.
+        Prioritizes businesses without contacts for maximum lead impact.
+        Optionally rescores businesses after enrichment to reflect new contacts.
+        """
+        result = run_google_places_enrich(
+            limit=payload.limit,
+            priority=payload.priority,
+        )
+        if payload.rescore and result.get("phones_added", 0) > 0:
+            rescored = score_businesses(limit=None, force_rescore=False)
+            result["rescored"] = rescored
+        return result
+
+    @app.post("/api/actions/verify-websites", dependencies=[Depends(require_mutation_auth)])
+    def api_verify_websites(payload: GooglePlacesVerifyRequest) -> dict:
+        """Verify whether potential leads actually have websites via Google Places.
+
+        This is the critical quality gate. For each business scoring >= min_score
+        with no website_url, searches Google Places. If Google confirms a website
+        exists, sets website_url so the business is excluded from leads on rescore.
+
+        Businesses that Google confirms have NO website are genuine lead candidates.
+        """
+        result = verify_websites(
+            limit=payload.limit,
+            min_score=payload.min_score,
+        )
+        if payload.rescore and result.get("websites_found", 0) > 0:
+            rescored = score_businesses(limit=None, force_rescore=True)
+            result["rescored"] = rescored
+        return result
 
     @app.post("/api/actions/business-export", dependencies=[Depends(require_mutation_auth)])
     def api_export_businesses(payload: BusinessExportRequest) -> dict:

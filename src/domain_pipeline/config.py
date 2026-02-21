@@ -42,6 +42,7 @@ class Config:
     apollo_api_key: Optional[str]
     instantly_api_key: Optional[str]
     lemlist_api_key: Optional[str]
+    google_places_api_key: Optional[str]
 
 
 def load_config() -> Config:
@@ -98,4 +99,5 @@ def load_config() -> Config:
         apollo_api_key=os.getenv("APOLLO_API_KEY") or None,
         instantly_api_key=os.getenv("INSTANTLY_API_KEY") or None,
         lemlist_api_key=os.getenv("LEMLIST_API_KEY") or None,
+        google_places_api_key=os.getenv("GOOGLE_PLACES_API_KEY") or None,
     )

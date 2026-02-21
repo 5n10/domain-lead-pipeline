@@ -214,6 +214,73 @@ export default function App() {
     }
   }
 
+  async function runGooglePlacesEnrich(): Promise<void> {
+    setActionLoading(true);
+    try {
+      const result = await api.enrichGooglePlaces({
+        limit: 200,
+        priority: "no_contacts",
+        rescore: true
+      });
+      const enriched = (result as Record<string, unknown>).enriched ?? 0;
+      const phonesAdded = (result as Record<string, unknown>).phones_added ?? 0;
+      const errorMsg = (result as Record<string, unknown>).error;
+      if (errorMsg) {
+        setStatusMessage(`Google Places: ${errorMsg}`);
+      } else {
+        setStatusMessage(
+          `Google Places enrichment: ${enriched} matched, ${phonesAdded} phones added`
+        );
+      }
+      await Promise.all([refreshOverview(), refreshLeads()]);
+    } catch (error) {
+      setStatusMessage(`Google Places enrichment failed: ${(error as Error).message}`);
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function runVerifyWebsites(): Promise<void> {
+    setActionLoading(true);
+    try {
+      const result = await api.verifyWebsites({ limit: 200, min_score: 30, rescore: true });
+      const r = result as Record<string, unknown>;
+      setStatusMessage(
+        `Website verification: ${r.websites_found ?? 0} have websites (disqualified), ` +
+        `${r.no_website_confirmed ?? 0} confirmed no website (genuine leads), ` +
+        `${r.no_match ?? 0} no match, ${r.api_calls ?? 0} API calls` +
+        (r.rescored ? `, rescored ${r.rescored}` : "")
+      );
+      await Promise.all([refreshOverview(), refreshLeads()]);
+    } catch (error) {
+      setStatusMessage(`Website verification failed: ${(error as Error).message}`);
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function runDomainValidation(): Promise<void> {
+    setActionLoading(true);
+    try {
+      const result = await api.validateDomains({
+        sync_limit: null,
+        rdap_limit: 200,
+        rescore: true
+      });
+      const synced = (result as Record<string, unknown>).synced ?? {};
+      const rdap = (result as Record<string, unknown>).rdap_processed ?? 0;
+      const rescored = (result as Record<string, unknown>).rescored ?? 0;
+      setStatusMessage(
+        `Domain validation: synced=${JSON.stringify(synced)}, RDAP checked=${rdap}, rescored=${rescored}`
+      );
+      await Promise.all([refreshOverview(), refreshLeads()]);
+    } catch (error) {
+      setStatusMessage(`Domain validation failed: ${(error as Error).message}`);
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
   async function runBusinessExport(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     setActionLoading(true);
@@ -591,6 +658,32 @@ export default function App() {
               {actionLoading ? "⏳ Scoring..." : "Score Now"}
             </button>
           </form>
+
+          <div className="stack" style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+            <h3 style={{ width: "100%" }}>Enrichment Tools</h3>
+            <button
+              onClick={() => void runDomainValidation()}
+              disabled={actionLoading}
+              style={{ flex: 1 }}
+            >
+              {actionLoading ? "⏳ Validating..." : "Validate Domains (RDAP)"}
+            </button>
+            <button
+              onClick={() => void runGooglePlacesEnrich()}
+              disabled={actionLoading}
+              style={{ flex: 1 }}
+            >
+              {actionLoading ? "⏳ Enriching..." : "Enrich (Google Places)"}
+            </button>
+            <button
+              onClick={() => void runVerifyWebsites()}
+              disabled={actionLoading}
+              style={{ flex: 1, background: "#c62828", color: "white" }}
+              title="Check Google Places for websites. Businesses with confirmed websites get disqualified as leads."
+            >
+              {actionLoading ? "⏳ Verifying..." : "Verify Websites (Google)"}
+            </button>
+          </div>
 
           <form onSubmit={(event) => void runBusinessExport(event)} className="stack">
             <h3>Export Businesses</h3>

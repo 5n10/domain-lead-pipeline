@@ -10,6 +10,7 @@ from .workers.export_contacts import export_csv
 from .workers.lead_scoring import run_batch as run_lead_scoring
 from .workers.osm_import import import_osm, load_areas, load_categories, resolve_free_text_area
 from .workers.rdap_check import run_batch as run_rdap_checks
+from .workers.google_places import run_batch as run_google_places_enrich, verify_websites
 
 
 def maybe_import_businesses(
@@ -66,9 +67,19 @@ def run_once(
     # Disable auto_rescore in RDAP since run_once already calls score_businesses below
     rdap_processed = run_rdap_checks(limit=rdap_limit, scope=area, statuses=rdap_statuses, auto_rescore=False)
     email_processed = run_role_email_enrichment(limit=email_limit, scope=area)
+    # Google Places enrichment — adds phone numbers for businesses without contacts.
+    # Only runs if GOOGLE_PLACES_API_KEY is set; silently skips otherwise.
+    places_result = run_google_places_enrich(limit=200, priority="no_contacts")
     scored = run_lead_scoring(limit=score_limit, force_rescore=False)
     export_path = export_csv(platform, min_score=min_score)
     business_scored = score_businesses(limit=business_score_limit, scope=area, force_rescore=False)
+    # Website verification — checks Google Places to confirm leads truly have
+    # no website. Businesses with confirmed websites get disqualified.
+    # Only runs if GOOGLE_PLACES_API_KEY is set; silently returns 0 otherwise.
+    verify_result = verify_websites(limit=200, min_score=30.0)
+    # Rescore after verification to reflect newly discovered websites
+    if verify_result.get("websites_found", 0) > 0:
+        business_scored += score_businesses(limit=None, force_rescore=True)
     business_export_path = export_business_leads(
         platform=business_platform,
         min_score=business_min_score,
@@ -82,6 +93,11 @@ def run_once(
         "synced": synced,
         "rdap_processed": rdap_processed,
         "email_processed": email_processed,
+        "places_enriched": places_result.get("enriched", 0),
+        "places_phones_added": places_result.get("phones_added", 0),
+        "websites_verified": verify_result.get("processed", 0),
+        "websites_found": verify_result.get("websites_found", 0),
+        "no_website_confirmed": verify_result.get("no_website_confirmed", 0),
         "scored": scored,
         "export_path": str(export_path) if export_path else None,
         "business_scored": business_scored,

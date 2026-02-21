@@ -31,20 +31,24 @@ HIGH_PRIORITY_CATEGORIES = {"trades", "contractors"}
 MEDIUM_PRIORITY_CATEGORIES = {"professional_services", "retail", "health", "food", "auto"}
 
 # Domain status sets
-VERIFIED_UNHOSTED_DOMAIN_STATUSES = {"verified_unhosted", "mx_missing", "checked", "no_mx", "enriched", "no_contacts"}
+VERIFIED_UNHOSTED_DOMAIN_STATUSES = {"verified_unhosted", "checked", "no_mx", "enriched", "no_contacts"}
 UNREGISTERED_CANDIDATE_STATUSES = {"unregistered_candidate"}
 HOSTED_DOMAIN_STATUSES = {"hosted"}
 PARKED_DOMAIN_STATUSES = {"parked"}
+# Domains with DNS records but no web server — business likely has a website
+# elsewhere or is using the domain for email only. NOT a lead opportunity.
+REGISTERED_DOMAIN_STATUSES = {"registered_no_web", "registered_dns_only", "mx_missing"}
 UNKNOWN_DOMAIN_STATUSES = {"new", "rdap_error", "dns_error", "skipped"}
 
-# Scoring weights (extracted from _score_business logic)
+# Scoring weights
+# NOTE: Domain-based boosts (SCORE_VERIFIED_UNHOSTED_DOMAIN, SCORE_UNREGISTERED_DOMAIN)
+# were REMOVED because email domain ≠ business website domain. Having info@company.ae
+# tells us nothing about whether the business has a website at company.ae or elsewhere.
+# The only reliable signals are: contacts (email/phone), category, and OSM website tag.
 SCORE_NO_WEBSITE = 25
 SCORE_BUSINESS_EMAIL = 20
 SCORE_ANY_EMAIL = 5
 SCORE_PHONE = 15
-SCORE_VERIFIED_UNHOSTED_DOMAIN = 35
-SCORE_UNREGISTERED_DOMAIN = 20
-SCORE_ANY_DOMAIN = 10
 SCORE_HIGH_PRIORITY_CATEGORY = 20
 SCORE_MEDIUM_PRIORITY_CATEGORY = 10
 SCORE_ANY_CATEGORY = 5
@@ -91,23 +95,15 @@ def business_eligibility_filters(
     if require_contact:
         filters.append(_business_has_contact_expr())
 
-    # Exclude businesses whose email domain is hosted or parked — they DO have
-    # a website, even though OSM didn't tag it. On by default for lead quality.
-    # BUT: only exclude if the business has NO qualified (unhosted/unregistered)
-    # domains — a business with both hosted and unhosted domains is still a lead.
+    # Exclude businesses whose email domain is hosted, parked, or registered
+    # (has DNS records) — they likely have a website somewhere, even though
+    # OSM didn't tag it. ANY domain with DNS records indicates active use.
     if exclude_hosted_email_domain:
-        hosted_parked_expr = _business_has_domain_status_expr(
-            HOSTED_DOMAIN_STATUSES | PARKED_DOMAIN_STATUSES
+        active_domain_expr = _business_has_domain_status_expr(
+            HOSTED_DOMAIN_STATUSES | PARKED_DOMAIN_STATUSES | REGISTERED_DOMAIN_STATUSES
         )
-        qualified_expr = _business_has_domain_status_expr(
-            VERIFIED_UNHOSTED_DOMAIN_STATUSES | UNREGISTERED_CANDIDATE_STATUSES
-        )
-        if hosted_parked_expr is not None:
-            if qualified_expr is not None:
-                # Exclude only if has hosted/parked AND does NOT have any qualified domains
-                filters.append(not_(and_(hosted_parked_expr, not_(qualified_expr))))
-            else:
-                filters.append(not_(hosted_parked_expr))
+        if active_domain_expr is not None:
+            filters.append(not_(active_domain_expr))
 
     # Only exclude hosted/parked domains when domain qualification is required
     if require_domain_qualification or require_unhosted_domain:
@@ -136,6 +132,7 @@ def load_business_features(session: Session, business_ids: list) -> dict:
             "unregistered_domains": set(),
             "hosted_domains": set(),
             "parked_domains": set(),
+            "registered_domains": set(),
             "unknown_domains": set(),
             "domain_status_counts": {},
         }
@@ -189,6 +186,8 @@ def load_business_features(session: Session, business_ids: list) -> dict:
             features[business_id]["hosted_domains"].add(normalized)
         elif status in PARKED_DOMAIN_STATUSES:
             features[business_id]["parked_domains"].add(normalized)
+        elif status in REGISTERED_DOMAIN_STATUSES:
+            features[business_id]["registered_domains"].add(normalized)
         else:
             if status in UNKNOWN_DOMAIN_STATUSES or not status:
                 features[business_id]["unknown_domains"].add(normalized)
@@ -234,6 +233,7 @@ def _score_business(business: Business, feature: dict) -> tuple[float, dict]:
     has_domain = bool(feature["domains"])
     has_hosted_domain = bool(feature["hosted_domains"])
     has_parked_domain = bool(feature["parked_domains"])
+    has_registered_domain = bool(feature["registered_domains"])
     has_verified_unhosted_domain = bool(feature["verified_unhosted_domains"])
     has_unregistered_candidate_domain = bool(feature["unregistered_domains"])
     has_unknown_domain = bool(feature["unknown_domains"])
@@ -250,15 +250,20 @@ def _score_business(business: Business, feature: dict) -> tuple[float, dict]:
     # 2. Business name looks like a domain (iRepair.ca, SuperMart.ae)
     name_is_domain = _name_looks_like_domain(business.name)
 
-    # 3. Hosted/parked domain from email — business has a real website
-    has_qualified = has_verified_unhosted_domain or has_unregistered_candidate_domain
-    if not business.website_url and (has_hosted_domain or has_parked_domain) and not has_qualified:
-        reasons = _build_reasons(business, feature, disqualify_reason="hosted_email_domain")
+    # 3. Any domain with DNS records = business likely has a website somewhere.
+    # This covers: hosted, parked, registered_no_web, registered_dns_only, mx_missing.
+    # The email domain tells us the business owns/uses that domain — if it has
+    # ANY DNS records, the business is technically active online.
+    has_any_active_domain = has_hosted_domain or has_parked_domain or has_registered_domain
+    if not business.website_url and has_any_active_domain:
+        reasons = _build_reasons(business, feature, disqualify_reason="active_domain")
         return 0.0, reasons
 
     # --- Positive scoring ---
+    # Only reliable signals: contacts, category, and OSM website tag absence.
+    # Domain status is NOT a reliable signal for "business needs a website".
 
-    # Base: no website = lead signal (but weak without contacts)
+    # Base: no website in OSM = potential lead signal
     if not business.website_url:
         score += SCORE_NO_WEBSITE
 
@@ -269,16 +274,6 @@ def _score_business(business: Business, feature: dict) -> tuple[float, dict]:
         score += SCORE_ANY_EMAIL
     if has_phone:
         score += SCORE_PHONE
-
-    # Domain signals
-    if has_verified_unhosted_domain:
-        score += SCORE_VERIFIED_UNHOSTED_DOMAIN
-    elif has_unregistered_candidate_domain:
-        score += SCORE_UNREGISTERED_DOMAIN
-    elif has_hosted_domain or has_parked_domain:
-        score += 0  # Already has web presence
-    elif has_domain:
-        score += SCORE_ANY_DOMAIN
 
     # Category signals
     category = (business.category or "").strip()
@@ -292,8 +287,8 @@ def _score_business(business: Business, feature: dict) -> tuple[float, dict]:
     # --- Quality caps ---
 
     # Unknown domains (RDAP hasn't checked yet) from business emails are very
-    # likely hosted. Cap aggressively until RDAP confirms status.
-    if not business.website_url and has_unknown_domain and not has_qualified:
+    # likely hosted/registered. Cap aggressively until RDAP confirms status.
+    if not business.website_url and has_unknown_domain:
         score = min(score, 10.0)
 
     # Business name looks like a domain — likely has website, cap score
@@ -301,15 +296,8 @@ def _score_business(business: Business, feature: dict) -> tuple[float, dict]:
         score = min(score, 15.0)
 
     # Businesses with NO contacts are extremely low quality — you can't reach them.
-    # They only get base "no website" + category points but are nearly useless.
     if not has_any_contact:
         score = min(score, 5.0)
-
-    # General caps for domain situations
-    if has_hosted_domain and not has_qualified:
-        score = min(score, 60.0)
-    if has_unknown_domain and not has_qualified:
-        score = min(score, 35.0)
 
     disqualify_reason = None
     if not has_any_contact:
@@ -326,7 +314,8 @@ def _build_reasons(business: Business, feature: dict, disqualify_reason: str = N
     category = (business.category or "").strip()
     has_hosted = bool(feature["hosted_domains"])
     has_parked = bool(feature["parked_domains"])
-    has_qualified = bool(feature["verified_unhosted_domains"]) or bool(feature["unregistered_domains"])
+    has_registered = bool(feature["registered_domains"])
+    has_any_active_domain = has_hosted or has_parked or has_registered
     is_chain = _is_branded_chain(business)
     raw = business.raw or {}
 
@@ -337,20 +326,21 @@ def _build_reasons(business: Business, feature: dict, disqualify_reason: str = N
         "has_phone": bool(feature["phones"]),
         "has_hosted_domain": has_hosted,
         "has_parked_domain": has_parked,
+        "has_registered_domain": has_registered,
+        "has_any_active_domain": has_any_active_domain,
         "disqualify_reason": disqualify_reason,
-        "disqualified_hosted_email_domain": (
-            not business.website_url and (has_hosted or has_parked) and not has_qualified
-        ),
         "is_branded_chain": is_chain,
         "brand": raw.get("brand"),
         "name_looks_like_domain": _name_looks_like_domain(business.name),
         "domain_count": len(feature["domains"]),
         "verified_unhosted_domain_count": len(feature["verified_unhosted_domains"]),
         "unregistered_domain_count": len(feature["unregistered_domains"]),
+        "registered_domain_count": len(feature["registered_domains"]),
         "unknown_domain_count": len(feature["unknown_domains"]),
         "domains": sorted(feature["domains"]),
         "verified_unhosted_domains": sorted(feature["verified_unhosted_domains"]),
         "unregistered_domains": sorted(feature["unregistered_domains"]),
+        "registered_domains": sorted(feature["registered_domains"]),
         "unknown_domains": sorted(feature["unknown_domains"]),
         "hosted_domains": sorted(feature["hosted_domains"]),
         "parked_domains": sorted(feature["parked_domains"]),
@@ -530,6 +520,7 @@ def export_business_leads(
                         "domains",
                         "verified_unhosted_domains",
                         "unregistered_domains",
+                        "registered_domains",
                         "unknown_domains",
                         "hosted_domains",
                         "parked_domains",
@@ -556,6 +547,7 @@ def export_business_leads(
                             ";".join(sorted(feature["domains"])),
                             ";".join(sorted(feature["verified_unhosted_domains"])),
                             ";".join(sorted(feature["unregistered_domains"])),
+                            ";".join(sorted(feature["registered_domains"])),
                             ";".join(sorted(feature["unknown_domains"])),
                             ";".join(sorted(feature["hosted_domains"])),
                             ";".join(sorted(feature["parked_domains"])),

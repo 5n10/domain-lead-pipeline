@@ -50,6 +50,21 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload)
     }),
+  enrichGooglePlaces: (payload: Record<string, unknown>) =>
+    request<Record<string, unknown>>("/api/actions/enrich-google-places", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
+  validateDomains: (payload: Record<string, unknown>) =>
+    request<Record<string, unknown>>("/api/actions/validate-domains", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
+  verifyWebsites: (payload: Record<string, unknown>) =>
+    request<Record<string, unknown>>("/api/actions/verify-websites", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
   automationStatus: () => request<AutomationStatus>("/api/automation/status"),
   automationStart: (payload: Record<string, unknown>) =>
     request<AutomationStatus>("/api/automation/start", {
