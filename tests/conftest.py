@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from threading import Lock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -17,6 +18,9 @@ from domain_pipeline.models import City
 class _AutomationStub:
     auto_start_enabled = False
 
+    def __init__(self):
+        self._run_lock = Lock()
+
     def start(self, updates=None):
         return self.status()
 
@@ -32,6 +36,15 @@ class _AutomationStub:
     def update_settings(self, updates):
         return None
 
+    def start_verification(self, updates=None):
+        return self.status()
+
+    def stop_verification(self):
+        return self.status()
+
+    def update_verify_settings(self, updates):
+        return None
+
     def status(self):
         return {
             "running": False,
@@ -42,6 +55,15 @@ class _AutomationStub:
             "last_error": None,
             "last_result": None,
             "run_count": 0,
+            "verification": {
+                "running": False,
+                "settings": {},
+                "last_started_at": None,
+                "last_finished_at": None,
+                "last_error": None,
+                "batch_count": 0,
+                "totals": {},
+            },
         }
 
 

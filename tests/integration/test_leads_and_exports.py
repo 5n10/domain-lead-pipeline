@@ -110,9 +110,13 @@ def test_mutation_endpoints_require_api_key_when_local_bypass_disabled(client, m
     monkeypatch.setenv("MUTATION_LOCALHOST_BYPASS", "false")
     monkeypatch.setenv("MUTATION_API_KEY", "test-secret")
 
-    unauthorized = client.post("/api/actions/business-score", json={"limit": 0})
+    # Force config reload so new env vars are picked up (config is cached)
+    from domain_pipeline.config_manager import reload_config
+    reload_config()
+
+    unauthorized = client.post("/api/actions/business-score", json={"limit": 1})
     assert unauthorized.status_code == 401
 
-    authorized = client.post("/api/actions/business-score", json={"limit": 0}, headers={"X-API-Key": "test-secret"})
+    authorized = client.post("/api/actions/business-score", json={"limit": 1}, headers={"X-API-Key": "test-secret"})
     assert authorized.status_code == 200
     assert authorized.json() == {"processed": 0}
