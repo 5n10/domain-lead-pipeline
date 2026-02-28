@@ -11,6 +11,7 @@ from .models import (
     JobRun,
     OutreachExport,
 )
+from .workers.business_leads import VERIFICATION_KEYS, compute_verification_confidence
 
 
 def collect_metrics() -> dict:
@@ -58,6 +59,76 @@ def collect_metrics() -> dict:
             )
         ).first()
 
+        # Verification coverage — how many businesses have been checked by each source
+        verification_counts = {}
+        for key in VERIFICATION_KEYS:
+            cnt = session.execute(
+                select(func.count(Business.id)).where(Business.raw.has_key(key))
+            ).scalar() or 0
+            verification_counts[key.replace("_verified", "")] = int(cnt)
+        # Count businesses with at least one verification
+        any_verified = session.execute(
+            select(func.count(Business.id)).where(
+                or_(*[Business.raw.has_key(k) for k in VERIFICATION_KEYS])
+            )
+        ).scalar() or 0
+        verification_counts["any_source"] = int(any_verified)
+
+        # DDG verification breakdown — conclusive vs inconclusive
+        ddg_conclusive = int(session.execute(
+            select(func.count(Business.id)).where(
+                Business.raw.has_key("ddg_verified"),
+                Business.raw["ddg_verify_result"].astext.in_(["no_website", "has_website"]),
+            )
+        ).scalar() or 0)
+        ddg_no_results = int(session.execute(
+            select(func.count(Business.id)).where(
+                Business.raw.has_key("ddg_verified"),
+                Business.raw["ddg_verify_result"].astext == "no_results",
+            )
+        ).scalar() or 0)
+
+        # LLM verification breakdown — conclusive vs inconclusive
+        llm_conclusive = int(session.execute(
+            select(func.count(Business.id)).where(
+                Business.raw.has_key("llm_verified"),
+                Business.raw["llm_verify_result"].astext.in_(["no_website", "has_website"]),
+            )
+        ).scalar() or 0)
+        llm_not_sure = int(session.execute(
+            select(func.count(Business.id)).where(
+                Business.raw.has_key("llm_verified"),
+                Business.raw["llm_verify_result"].astext.in_(["no_results", "not_sure"]),
+            )
+        ).scalar() or 0)
+
+        # SearXNG verification breakdown — conclusive vs inconclusive
+        searxng_conclusive = int(session.execute(
+            select(func.count(Business.id)).where(
+                Business.raw.has_key("searxng_verified"),
+                Business.raw["searxng_result"].astext.in_(["no_website", "has_website"]),
+            )
+        ).scalar() or 0)
+        searxng_no_results = int(session.execute(
+            select(func.count(Business.id)).where(
+                Business.raw.has_key("searxng_verified"),
+                Business.raw["searxng_result"].astext == "no_results",
+            )
+        ).scalar() or 0)
+
+        # Confidence distribution — compute from raw JSONB for no-website businesses
+        # We compute this in Python since confidence is a derived field
+        confidence_sample = session.execute(
+            select(Business.raw).where(
+                or_(Business.website_url.is_(None), Business.website_url == ""),
+                Business.lead_score.isnot(None),
+            )
+        ).scalars().all()
+        confidence_dist = {"high": 0, "medium": 0, "low": 0, "unverified": 0}
+        for raw_data in confidence_sample:
+            conf = compute_verification_confidence(raw_data)
+            confidence_dist[conf] = confidence_dist.get(conf, 0) + 1
+
         recent_jobs = session.execute(
             select(JobRun.job_name, JobRun.status, JobRun.started_at, JobRun.finished_at, JobRun.processed_count)
             .order_by(JobRun.started_at.desc())
@@ -99,6 +170,16 @@ def collect_metrics() -> dict:
             "total": business_exports_total,
             "queued": business_exports_queued,
         },
+        "verification": verification_counts,
+        "verification_details": {
+            "ddg_conclusive": ddg_conclusive,
+            "ddg_no_results": ddg_no_results,
+            "llm_conclusive": llm_conclusive,
+            "llm_not_sure": llm_not_sure,
+            "searxng_conclusive": searxng_conclusive,
+            "searxng_no_results": searxng_no_results,
+        },
+        "confidence_distribution": confidence_dist,
         "recent_jobs": [
             {
                 "job_name": job_name,

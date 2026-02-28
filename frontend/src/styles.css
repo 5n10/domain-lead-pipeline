@@ -1,324 +1,39 @@
-@import url("https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap");
+@import "tailwindcss";
 
-:root {
-  --bg-main: #f6f2e9;
-  --bg-panel: #fffef8;
-  --bg-accent: linear-gradient(120deg, #f5d486 0%, #f3a66f 40%, #e77365 100%);
-  --text-main: #20201b;
-  --text-soft: #5d5b51;
-  --line: #d7ceb7;
-  --signal: #005c53;
-  --signal-soft: #d9eee9;
-  --warning: #8a3100;
-  --shadow: 0 14px 30px rgba(40, 34, 20, 0.12);
-}
-
-* {
-  box-sizing: border-box;
+@theme {
+  --color-bg-main: #f8f6f1;
+  --color-bg-card: #ffffff;
+  --color-bg-sidebar: #1e1e2e;
+  --color-sidebar-hover: #2a2a3e;
+  --color-sidebar-active: #363650;
+  --color-text-primary: #1a1a2e;
+  --color-text-secondary: #64748b;
+  --color-text-sidebar: #c9cedb;
+  --color-border: #e2e0d8;
+  --color-accent: #d97706;
+  --color-accent-hover: #b45309;
+  --color-signal-green: #16a34a;
+  --color-signal-red: #dc2626;
+  --color-signal-amber: #f59e0b;
+  --color-signal-blue: #2563eb;
+  --color-signal-purple: #7c3aed;
+  --color-conf-high: #16a34a;
+  --color-conf-medium: #2563eb;
+  --color-conf-low: #f59e0b;
+  --color-conf-unverified: #94a3b8;
+  --font-sans: 'Inter', 'Sora', system-ui, -apple-system, sans-serif;
+  --font-mono: 'IBM Plex Mono', 'Fira Code', monospace;
 }
 
 body {
   margin: 0;
-  font-family: "Sora", sans-serif;
-  color: var(--text-main);
-  background:
-    radial-gradient(circle at top right, rgba(246, 200, 127, 0.5), transparent 34%),
-    radial-gradient(circle at top left, rgba(54, 130, 115, 0.18), transparent 40%),
-    var(--bg-main);
+  background: var(--color-bg-main);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
 }
 
-.page {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 24px;
-  display: grid;
-  gap: 18px;
-}
-
-.hero {
-  border-radius: 20px;
-  padding: 24px;
-  background: var(--bg-accent);
-  color: #201f1a;
-  box-shadow: var(--shadow);
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  align-items: flex-start;
-}
-
-.hero h1 {
-  margin: 0 0 8px;
-  font-size: clamp(1.6rem, 2.8vw, 2.4rem);
-}
-
-.hero p {
-  margin: 0;
-  max-width: 780px;
-}
-
-.hero-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.status-bar {
-  border: 1px solid var(--line);
-  background: var(--bg-panel);
-  border-radius: 14px;
-  padding: 12px 16px;
-}
-
-.grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-}
-
-.panel {
-  background: var(--bg-panel);
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  box-shadow: var(--shadow);
-  padding: 16px;
-  overflow: hidden;
-}
-
-.panel h2 {
-  margin: 0 0 12px;
-}
-
-.panel h3 {
-  margin: 0;
-  font-size: 0.95rem;
-  color: var(--text-soft);
-}
-
-.metric-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.metric-card {
-  border-radius: 10px;
-  border: 1px solid var(--line);
-  background: #fff8e6;
-  padding: 10px;
-}
-
-.metric-card span {
-  display: block;
-  font-size: 0.78rem;
-  color: var(--text-soft);
-}
-
-.metric-card strong {
-  font-size: 1.25rem;
-}
-
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 12px;
-}
-
-.chip {
-  border-radius: 999px;
-  border: 1px solid #d1c4a0;
-  background: #fef7df;
-  padding: 4px 10px;
-  font-size: 0.78rem;
-}
-
-.stack {
-  margin: 12px 0;
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  display: grid;
-  gap: 8px;
-  background: #fffdf4;
-}
-
-.automation-summary {
-  margin: 0;
-  font-size: 0.82rem;
-  color: var(--text-soft);
-}
-
-.button-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-label {
-  display: grid;
-  gap: 4px;
-  font-size: 0.85rem;
-  color: var(--text-soft);
-}
-
-.check {
-  grid-template-columns: auto 1fr;
-  align-items: center;
-  gap: 8px;
-}
-
-input,
-select,
-button {
-  font-family: "IBM Plex Mono", monospace;
-  font-size: 0.84rem;
-}
-
-input,
-select {
-  width: 100%;
-  border-radius: 8px;
-  border: 1px solid #cfc3a5;
-  background: #fff;
-  padding: 8px 10px;
-}
-
-button {
-  border-radius: 8px;
-  border: 1px solid #104c41;
-  color: #fff;
-  background: #0d6c5f;
-  padding: 8px 12px;
-  cursor: pointer;
-}
-
-button:hover {
-  filter: brightness(1.05);
-}
-
-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
-.filters {
-  display: grid;
-  gap: 10px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin-bottom: 10px;
-}
-
-.table-caption {
-  margin: 0 0 8px;
-  color: var(--text-soft);
-  font-size: 0.9rem;
-}
-
-.table-wrap {
-  width: 100%;
-  overflow: auto;
-}
-
-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.8rem;
-}
-
-th,
-td {
-  text-align: left;
-  border-bottom: 1px solid var(--line);
-  padding: 8px;
-  white-space: nowrap;
-}
-
-thead th {
-  position: sticky;
-  top: 0;
-  background: #fff6de;
-  z-index: 1;
-}
-
-.exports-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 8px;
-}
-
-.exports-list li {
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 10px;
-  display: grid;
-  gap: 4px;
-}
-
-.exports-list a {
-  color: var(--signal);
-  font-weight: 600;
-  text-decoration: none;
-}
-
-.exports-list a:hover {
-  text-decoration: underline;
-}
-
-.status-error {
-  background: #fff0f0;
-  border-color: #d04040;
-  color: #8a1010;
-}
-
-.spinner {
-  margin-left: 8px;
-  font-size: 0.9rem;
-}
-
-.total-context {
-  color: var(--text-soft);
-  font-size: 0.82rem;
-}
-
-.row-error {
-  background: #fff5f5;
-}
-
-.row-error td {
-  color: #8a1010;
-}
-
-@media (max-width: 1100px) {
-  .grid {
-    grid-template-columns: 1fr;
-  }
-
-  .metric-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .filters {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 700px) {
-  .page {
-    padding: 14px;
-  }
-
-  .hero {
-    display: grid;
-  }
-
-  .metric-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .filters {
-    grid-template-columns: 1fr;
-  }
-}
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }

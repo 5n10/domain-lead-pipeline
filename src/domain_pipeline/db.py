@@ -18,8 +18,10 @@ _config = load_config()
 _engine = create_engine(
     _config.database_url,
     pool_pre_ping=True,
+    pool_size=10,       # More connections for concurrent verification threads
+    max_overflow=20,    # Allow bursts up to 30 total connections
     pool_recycle=3600,  # Recycle connections after 1 hour to prevent stale connections
-    pool_timeout=30,  # Timeout after 30 seconds waiting for a connection from the pool
+    pool_timeout=30,    # Timeout after 30 seconds waiting for a connection from the pool
 )
 SessionLocal = sessionmaker(bind=_engine, expire_on_commit=False)
 

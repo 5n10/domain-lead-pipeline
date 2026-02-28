@@ -10,7 +10,7 @@ from typing import Optional
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, ConfigDict
 from sqlalchemy import exists, func, not_, or_, select
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.staticfiles import StaticFiles
@@ -29,12 +29,23 @@ from .pipeline import run_once
 from .workers.business_domain_sync import run_batch as sync_business_domains
 from .workers.rdap_check import run_batch as run_rdap_checks
 from .workers.business_leads import (
+    VERIFICATION_KEYS,
     business_eligibility_filters,
+    compute_verification_confidence,
+    compute_verification_count,
     export_business_leads,
+    get_verification_sources,
     load_business_features,
     score_businesses,
 )
 from .workers.google_places import run_batch as run_google_places_enrich, verify_websites
+from .workers.web_search_verify import run_batch as run_ddg_verify
+from .workers.llm_verify import run_batch as run_llm_verify
+from .workers.foursquare import run_batch as run_foursquare_enrich, verify_websites as verify_websites_foursquare
+from .workers.domain_guess import run_batch as run_domain_guess
+from .workers.hunter import run_batch as run_hunter_enrich
+from .workers.sheets_export import export_to_sheets
+from .notifications import send_notification
 
 
 # Allowed configuration file paths for validation
@@ -159,35 +170,38 @@ def _validate_file_path(file_path: str, param_name: str) -> None:
 
 
 class PipelineRunRequest(BaseModel):
-    area: Optional[str] = None
-    categories: str = "all"
-    areas_file: str = "config/areas.json"
-    categories_file: str = "config/categories.json"
-    sync_limit: Optional[int] = None
-    rdap_limit: Optional[int] = None
+    model_config = ConfigDict(extra="forbid")
+    area: Optional[str] = Field(None, max_length=100)
+    categories: str = Field("all", max_length=500)
+    areas_file: str = Field("config/areas.json", max_length=100, pattern=r"^config/[a-zA-Z0-9_-]+\.json$")
+    categories_file: str = Field("config/categories.json", max_length=100, pattern=r"^config/[a-zA-Z0-9_-]+\.json$")
+    sync_limit: Optional[int] = Field(None, ge=1, le=10000)
+    rdap_limit: Optional[int] = Field(None, ge=1, le=10000)
     rdap_statuses: Optional[list[str]] = None
-    email_limit: Optional[int] = None
-    score_limit: Optional[int] = None
-    min_score: Optional[float] = None
-    platform: str = "csv"
-    business_score_limit: Optional[int] = None
-    business_platform: str = "csv_business"
-    business_min_score: Optional[float] = None
+    email_limit: Optional[int] = Field(None, ge=1, le=10000)
+    score_limit: Optional[int] = Field(None, ge=1, le=10000)
+    min_score: Optional[float] = Field(None, ge=0.0)
+    platform: str = Field("csv", max_length=50)
+    business_score_limit: Optional[int] = Field(None, ge=1, le=10000)
+    business_platform: str = Field("csv_business", max_length=50)
+    business_min_score: Optional[float] = Field(None, ge=0.0)
     business_require_unhosted_domain: bool = False
     business_require_contact: bool = True
     business_require_domain_qualification: bool = True
 
 
 class BusinessScoreRequest(BaseModel):
-    limit: Optional[int] = None
-    scope: Optional[str] = None
+    model_config = ConfigDict(extra="forbid")
+    limit: Optional[int] = Field(None, ge=1, le=100000)
+    scope: Optional[str] = Field(None, max_length=50)
     force_rescore: bool = False
 
 
 class BusinessExportRequest(BaseModel):
-    platform: str = "csv_business"
-    min_score: Optional[float] = None
-    limit: Optional[int] = None
+    model_config = ConfigDict(extra="forbid")
+    platform: str = Field("csv_business", max_length=50)
+    min_score: Optional[float] = Field(None, ge=0.0)
+    limit: Optional[int] = Field(None, ge=1, le=10000)
     require_contact: bool = True
     require_unhosted_domain: bool = False
     require_domain_qualification: bool = True
@@ -195,44 +209,133 @@ class BusinessExportRequest(BaseModel):
 
 
 class GooglePlacesEnrichRequest(BaseModel):
-    limit: Optional[int] = None
-    priority: str = "no_contacts"  # "no_contacts", "no_phone", "all"
+    model_config = ConfigDict(extra="forbid")
+    limit: Optional[int] = Field(None, ge=1, le=1000)
+    priority: str = Field("no_contacts", max_length=20)
     rescore: bool = True
 
 
 class GooglePlacesVerifyRequest(BaseModel):
-    limit: Optional[int] = None
-    min_score: float = 30.0
+    model_config = ConfigDict(extra="forbid")
+    limit: Optional[int] = Field(None, ge=1, le=1000)
+    min_score: float = Field(30.0, ge=0.0)
     rescore: bool = True
 
 
+class DomainGuessRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    limit: Optional[int] = Field(None, ge=1, le=1000)
+    min_score: float = Field(0.0, ge=0.0)
+    rescore: bool = True
+
+
+class DDGVerifyRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    limit: Optional[int] = Field(None, ge=1, le=1000)
+    min_score: float = Field(30.0, ge=0.0)
+    rescore: bool = True
+
+
+class LLMVerifyRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    limit: Optional[int] = Field(None, ge=1, le=1000)
+    min_score: float = Field(30.0, ge=0.0)
+    rescore: bool = True
+
+
+class GoogleSearchVerifyRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    limit: Optional[int] = Field(None, ge=1, le=1000)
+    min_score: float = Field(30.0, ge=0.0)
+    rescore: bool = True
+
+
+class SearXNGVerifyRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    limit: Optional[int] = Field(None, ge=1, le=2000)
+    min_score: float = Field(0.0, ge=0.0)
+    rescore: bool = True
+
+
+class FoursquareEnrichRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    limit: Optional[int] = Field(None, ge=1, le=1000)
+    priority: str = Field("no_contacts", max_length=20)
+    rescore: bool = True
+
+
+class FoursquareVerifyRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    limit: Optional[int] = Field(None, ge=1, le=1000)
+    min_score: float = Field(30.0, ge=0.0)
+    rescore: bool = True
+
+
+class HunterEnrichRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    limit: Optional[int] = Field(None, ge=1, le=100)
+
+
+class SheetsExportRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    min_score: Optional[float] = Field(None, ge=0.0)
+    limit: Optional[int] = Field(None, ge=1, le=10000)
+    require_contact: bool = True
+    require_unhosted_domain: bool = False
+    require_domain_qualification: bool = True
+
+
+class TestNotificationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    title: str = Field("Test Notification", max_length=100)
+    message: str = Field("Domain Lead Pipeline test notification", max_length=500)
+
+
 class AutomationSettingsRequest(BaseModel):
-    interval_seconds: Optional[int] = None
-    area: Optional[str] = None
-    categories: Optional[str] = None
-    areas_file: Optional[str] = None
-    categories_file: Optional[str] = None
-    sync_limit: Optional[int] = None
-    rdap_limit: Optional[int] = None
+    model_config = ConfigDict(extra="forbid")
+    interval_seconds: Optional[int] = Field(None, ge=60, le=86400)
+    area: Optional[str] = Field(None, max_length=100)
+    categories: Optional[str] = Field(None, max_length=500)
+    areas_file: Optional[str] = Field(None, max_length=100, pattern=r"^config/[a-zA-Z0-9_-]+\.json$")
+    categories_file: Optional[str] = Field(None, max_length=100, pattern=r"^config/[a-zA-Z0-9_-]+\.json$")
+    sync_limit: Optional[int] = Field(None, ge=1, le=10000)
+    rdap_limit: Optional[int] = Field(None, ge=1, le=10000)
     rdap_statuses: Optional[list[str]] = None
-    email_limit: Optional[int] = None
-    score_limit: Optional[int] = None
-    platform: Optional[str] = None
-    min_score: Optional[float] = None
-    business_score_limit: Optional[int] = None
-    business_platform: Optional[str] = None
-    business_min_score: Optional[float] = None
+    email_limit: Optional[int] = Field(None, ge=1, le=10000)
+    score_limit: Optional[int] = Field(None, ge=1, le=10000)
+    platform: Optional[str] = Field(None, max_length=50)
+    min_score: Optional[float] = Field(None, ge=0.0)
+    business_score_limit: Optional[int] = Field(None, ge=1, le=10000)
+    business_platform: Optional[str] = Field(None, max_length=50)
+    business_min_score: Optional[float] = Field(None, ge=0.0)
     business_require_unhosted_domain: Optional[bool] = None
     business_require_contact: Optional[bool] = None
     business_require_domain_qualification: Optional[bool] = None
     daily_target_enabled: Optional[bool] = None
-    daily_target_count: Optional[int] = None
-    daily_target_min_score: Optional[float] = None
-    daily_target_platform_prefix: Optional[str] = None
+    daily_target_count: Optional[int] = Field(None, ge=1, le=1000)
+    daily_target_min_score: Optional[float] = Field(None, ge=0.0)
+    daily_target_platform_prefix: Optional[str] = Field(None, max_length=50)
     daily_target_require_contact: Optional[bool] = None
     daily_target_require_domain_qualification: Optional[bool] = None
     daily_target_require_unhosted_domain: Optional[bool] = None
     daily_target_allow_recycle: Optional[bool] = None
+
+
+class VerificationSettingsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    domain_guess_batch: Optional[int] = Field(None, ge=1, le=5000)
+    domain_guess_min_score: Optional[float] = Field(None, ge=0.0)
+    searxng_batch: Optional[int] = Field(None, ge=1, le=2000)
+    searxng_min_score: Optional[float] = Field(None, ge=0.0)
+    ddg_batch: Optional[int] = Field(None, ge=1, le=1000)
+    ddg_min_score: Optional[float] = Field(None, ge=0.0)
+    llm_batch: Optional[int] = Field(None, ge=1, le=500)
+    llm_min_score: Optional[float] = Field(None, ge=0.0)
+    google_search_batch: Optional[int] = Field(None, ge=1, le=500)
+    google_search_min_score: Optional[float] = Field(None, ge=0.0)
+    rescore_after_batch: Optional[bool] = None
+    pause_between_batches: Optional[int] = Field(None, ge=1, le=300)
+    pause_when_idle: Optional[int] = Field(None, ge=10, le=3600)
 
 
 automation_controller = AutomationController()
@@ -243,9 +346,12 @@ def create_app() -> FastAPI:
     async def lifespan(_: FastAPI):
         if automation_controller.auto_start_enabled:
             automation_controller.start()
+        # Always start continuous verification on boot
+        automation_controller.start_verification()
         try:
             yield
         finally:
+            automation_controller.stop_verification()
             automation_controller.stop()
 
     app = FastAPI(title="Domain Lead Pipeline API", version="0.1.0", lifespan=lifespan)
@@ -296,12 +402,14 @@ def create_app() -> FastAPI:
         min_score: Optional[float] = Query(default=None),
         category: Optional[str] = Query(default=None),
         city: Optional[str] = Query(default=None),
+        min_confidence: Optional[str] = Query(default=None),
         require_contact: bool = Query(default=False),
         require_unhosted_domain: bool = Query(default=False),
         require_domain_qualification: bool = Query(default=False),
         require_no_website: bool = Query(default=True),
         exclude_hosted_email_domain: bool = Query(default=True),
         only_unexported: bool = Query(default=False),
+        only_verified: bool = Query(default=False),
         platform: str = Query(default="csv_business"),
         limit: int = Query(default=200, ge=1, le=2000),
         offset: int = Query(default=0, ge=0),
@@ -329,6 +437,13 @@ def create_app() -> FastAPI:
                 shared_filters.append(City.name.ilike(f"%{city}%"))
             if only_unexported:
                 shared_filters.append(not_(exported_for_platform_exists))
+            if only_verified:
+                # At least one verification source must have checked this business
+                shared_filters.append(
+                    or_(
+                        *[Business.raw.has_key(key) for key in VERIFICATION_KEYS]
+                    )
+                )
             shared_filters.extend(
                 business_eligibility_filters(
                     require_contact=require_contact,
@@ -367,7 +482,7 @@ def create_app() -> FastAPI:
                 .all()
             )
 
-            items = [
+            all_items = [
                 {
                     "id": str(business.id),
                     "name": business.name,
@@ -391,9 +506,20 @@ def create_app() -> FastAPI:
                     "parked_domains": sorted(feature_map[business.id]["parked_domains"]),
                     "domain_status_counts": feature_map[business.id]["domain_status_counts"],
                     "exported": business.id in exported_ids,
+                    "verification_count": compute_verification_count(business.raw),
+                    "verification_sources": get_verification_sources(business.raw),
+                    "verification_confidence": compute_verification_confidence(business.raw),
                 }
                 for business, city_row in rows
             ]
+
+            # Client-side confidence filter (computed field, not in DB)
+            if min_confidence:
+                confidence_rank = {"high": 3, "medium": 2, "low": 1, "unverified": 0}
+                min_rank = confidence_rank.get(min_confidence, 0)
+                items = [item for item in all_items if confidence_rank.get(item["verification_confidence"], 0) >= min_rank]
+            else:
+                items = all_items
 
             return {
                 "total_candidates": total_candidates,
@@ -429,26 +555,31 @@ def create_app() -> FastAPI:
         # Validate file paths to prevent directory traversal
         _validate_file_path(payload.areas_file, "areas_file")
         _validate_file_path(payload.categories_file, "categories_file")
-        
-        return run_once(
-            area=payload.area,
-            categories=payload.categories,
-            areas_file=payload.areas_file,
-            categories_file=payload.categories_file,
-            sync_limit=payload.sync_limit,
-            rdap_limit=payload.rdap_limit,
-            rdap_statuses=payload.rdap_statuses,
-            email_limit=payload.email_limit,
-            score_limit=payload.score_limit,
-            platform=payload.platform,
-            min_score=payload.min_score,
-            business_score_limit=payload.business_score_limit,
-            business_platform=payload.business_platform,
-            business_min_score=payload.business_min_score,
-            business_require_unhosted_domain=payload.business_require_unhosted_domain,
-            business_require_contact=payload.business_require_contact,
-            business_require_domain_qualification=payload.business_require_domain_qualification,
-        )
+
+        if not automation_controller._run_lock.acquire(blocking=False):
+            raise HTTPException(status_code=409, detail="Pipeline is already running")
+        try:
+            return run_once(
+                area=payload.area,
+                categories=payload.categories,
+                areas_file=payload.areas_file,
+                categories_file=payload.categories_file,
+                sync_limit=payload.sync_limit,
+                rdap_limit=payload.rdap_limit,
+                rdap_statuses=payload.rdap_statuses,
+                email_limit=payload.email_limit,
+                score_limit=payload.score_limit,
+                platform=payload.platform,
+                min_score=payload.min_score,
+                business_score_limit=payload.business_score_limit,
+                business_platform=payload.business_platform,
+                business_min_score=payload.business_min_score,
+                business_require_unhosted_domain=payload.business_require_unhosted_domain,
+                business_require_contact=payload.business_require_contact,
+                business_require_domain_qualification=payload.business_require_domain_qualification,
+            )
+        finally:
+            automation_controller._run_lock.release()
 
     @app.post("/api/actions/business-score", dependencies=[Depends(require_mutation_auth)])
     def api_score_businesses(payload: BusinessScoreRequest) -> dict:
@@ -519,10 +650,163 @@ def create_app() -> FastAPI:
             limit=payload.limit,
             min_score=payload.min_score,
         )
-        if payload.rescore and result.get("websites_found", 0) > 0:
-            rescored = score_businesses(limit=None, force_rescore=True)
+        if payload.rescore and result.get("processed", 0) > 0:
+            rescored = score_businesses(limit=None, force_rescore=False)
             result["rescored"] = rescored
         return result
+
+    @app.post("/api/actions/domain-guess", dependencies=[Depends(require_mutation_auth)])
+    def api_domain_guess(payload: DomainGuessRequest) -> dict:
+        """Guess domains from business names and check via HTTP HEAD.
+
+        FREE — no API key, no rate limits. ~500 businesses/minute.
+        Generates candidate domains from business names (e.g. "GTA Heating" →
+        gtaheatingandcooling.com) and checks if they resolve to a live site.
+        """
+        result = run_domain_guess(
+            limit=payload.limit,
+            min_score=payload.min_score,
+        )
+        if payload.rescore and result.get("processed", 0) > 0:
+            rescored = score_businesses(limit=None, force_rescore=False)
+            result["rescored"] = rescored
+        return result
+
+    @app.post("/api/actions/verify-websites-ddg", dependencies=[Depends(require_mutation_auth)])
+    def api_verify_websites_ddg(payload: DDGVerifyRequest) -> dict:
+        """Verify whether leads have websites via DuckDuckGo search.
+
+        Free, no API key required. Searches the web for each business to
+        determine if they actually have a website we missed.
+        """
+        result = run_ddg_verify(
+            limit=payload.limit,
+            min_score=payload.min_score,
+        )
+        if payload.rescore and result.get("processed", 0) > 0:
+            rescored = score_businesses(limit=None, force_rescore=False)
+            result["rescored"] = rescored
+        return result
+
+    @app.post("/api/actions/verify-websites-llm", dependencies=[Depends(require_mutation_auth)])
+    def api_verify_websites_llm(payload: LLMVerifyRequest) -> dict:
+        """Verify whether leads have websites via an LLM.
+
+        Requires OPENROUTER_API_KEY, GEMINI_API_KEY, or GROQ_API_KEY.
+        Uses language models to determine if a business has a real website.
+        """
+        result = run_llm_verify(
+            limit=payload.limit,
+            min_score=payload.min_score,
+        )
+        if payload.rescore and result.get("processed", 0) > 0:
+            rescored = score_businesses(limit=None, force_rescore=False)
+            result["rescored"] = rescored
+        return result
+
+    @app.post("/api/actions/verify-websites-google-search", dependencies=[Depends(require_mutation_auth)])
+    def api_verify_websites_google_search(payload: GoogleSearchVerifyRequest) -> dict:
+        """Verify whether leads have websites via Google Search scraping.
+
+        Free, no API key required. Additional verification stage that searches
+        Google for each business to determine if they have a website.
+        More conservative rate limiting than DDG to avoid blocks.
+        """
+        from .workers.google_search_verify import run_batch as run_google_search_verify
+
+        result = run_google_search_verify(
+            limit=payload.limit,
+            min_score=payload.min_score,
+        )
+        if payload.rescore and result.get("processed", 0) > 0:
+            rescored = score_businesses(limit=None, force_rescore=False)
+            result["rescored"] = rescored
+        return result
+
+    @app.post("/api/actions/verify-websites-searxng", dependencies=[Depends(require_mutation_auth)])
+    def api_verify_websites_searxng(payload: SearXNGVerifyRequest) -> dict:
+        """Verify whether leads have websites via SearXNG meta-search.
+
+        Uses local SearXNG instance aggregating DDG, Bing, Brave, Mojeek, etc.
+        FREE — no API keys, no rate limits, no blocking risk.
+        Replaces broken DDG and Google Search scrapers.
+        """
+        from .workers.searxng_verify import run_batch as run_searxng_verify
+
+        result = run_searxng_verify(
+            limit=payload.limit,
+            min_score=payload.min_score,
+        )
+        if payload.rescore and result.get("processed", 0) > 0:
+            rescored = score_businesses(limit=None, force_rescore=False)
+            result["rescored"] = rescored
+        return result
+
+    @app.post("/api/actions/enrich-foursquare", dependencies=[Depends(require_mutation_auth)])
+    def api_enrich_foursquare(payload: FoursquareEnrichRequest) -> dict:
+        """Enrich businesses with Foursquare Places data (phone, website, rating).
+
+        Free tier: 10,000 calls/month. Requires FOURSQUARE_API_KEY.
+        """
+        result = run_foursquare_enrich(
+            limit=payload.limit,
+            priority=payload.priority,
+        )
+        if payload.rescore and result.get("phones_added", 0) > 0:
+            rescored = score_businesses(limit=None, force_rescore=False)
+            result["rescored"] = rescored
+        return result
+
+    @app.post("/api/actions/verify-websites-foursquare", dependencies=[Depends(require_mutation_auth)])
+    def api_verify_websites_foursquare(payload: FoursquareVerifyRequest) -> dict:
+        """Verify whether leads have websites via Foursquare Places API.
+
+        Supplementary to Google Places verification. Requires FOURSQUARE_API_KEY.
+        """
+        result = verify_websites_foursquare(
+            limit=payload.limit,
+            min_score=payload.min_score,
+        )
+        if payload.rescore and result.get("processed", 0) > 0:
+            rescored = score_businesses(limit=None, force_rescore=False)
+            result["rescored"] = rescored
+        return result
+
+    @app.post("/api/actions/hunter-enrich", dependencies=[Depends(require_mutation_auth)])
+    def api_hunter_enrich(payload: HunterEnrichRequest) -> dict:
+        """Enrich lead businesses with email contacts via Hunter.io.
+
+        Free tier: 25 searches/month. Requires HUNTER_API_KEY.
+        """
+        return run_hunter_enrich(limit=payload.limit)
+
+    @app.post("/api/actions/export-google-sheets", dependencies=[Depends(require_mutation_auth)])
+    def api_export_google_sheets(payload: SheetsExportRequest) -> dict:
+        """Export leads directly to a Google Sheet.
+
+        Requires GOOGLE_SHEETS_CREDENTIALS_FILE and GOOGLE_SHEETS_SPREADSHEET_ID.
+        """
+        return export_to_sheets(
+            min_score=payload.min_score,
+            limit=payload.limit,
+            require_contact=payload.require_contact,
+            require_unhosted_domain=payload.require_unhosted_domain,
+            require_domain_qualification=payload.require_domain_qualification,
+        )
+
+    @app.post("/api/actions/test-notification", dependencies=[Depends(require_mutation_auth)])
+    def api_test_notification(payload: TestNotificationRequest) -> dict:
+        """Send a test push notification via ntfy.sh.
+
+        Requires NTFY_TOPIC to be configured.
+        """
+        success = send_notification(
+            title=payload.title,
+            message=payload.message,
+            priority="default",
+            tags=["test"],
+        )
+        return {"sent": success}
 
     @app.post("/api/actions/business-export", dependencies=[Depends(require_mutation_auth)])
     def api_export_businesses(payload: BusinessExportRequest) -> dict:
@@ -536,6 +820,44 @@ def create_app() -> FastAPI:
             exclude_hosted_email_domain=payload.exclude_hosted_email_domain,
         )
         return {"path": str(path) if path else None}
+
+    @app.post("/api/actions/reset-ddg-verification", dependencies=[Depends(require_mutation_auth)])
+    def api_reset_ddg_verification() -> dict:
+        """Clear ALL existing DDG verification data and force rescore.
+
+        The duckduckgo_search library (v8.1.1) was broken — it returned 0 results
+        for ALL queries. This means every DDG-verified business has fake data.
+        This endpoint clears all DDG verification flags so businesses can be
+        re-verified with the working HTML scraper.
+
+        Also forces rescore with new confidence caps.
+        """
+        with session_scope() as sess:
+            # Find all businesses with DDG verification data
+            businesses = sess.execute(
+                select(Business).where(Business.raw.has_key("ddg_verified"))
+            ).scalars().all()
+
+            cleared = 0
+            for biz in businesses:
+                raw = dict(biz.raw) if biz.raw else {}
+                # Remove all DDG-related keys
+                for key in ["ddg_verified", "ddg_verify_result", "ddg_website",
+                           "ddg_search_query", "ddg_result_count"]:
+                    raw.pop(key, None)
+                biz.raw = raw
+                cleared += 1
+
+                if cleared % 500 == 0:
+                    sess.flush()
+
+        # Force rescore all businesses with new confidence caps
+        rescored = score_businesses(limit=None, force_rescore=True)
+
+        return {
+            "ddg_cleared": cleared,
+            "rescored": rescored,
+        }
 
     @app.get("/api/automation/status")
     def api_automation_status() -> dict:
@@ -569,6 +891,31 @@ def create_app() -> FastAPI:
         automation_controller.update_settings(updates)
         return automation_controller.status()
 
+    # --- Continuous Verification endpoints ---
+
+    @app.post("/api/automation/start-verification", dependencies=[Depends(require_mutation_auth)])
+    def api_start_verification(payload: Optional[VerificationSettingsRequest] = None) -> dict:
+        """Start the continuous verification loop.
+
+        Runs domain guess, LLM verify, DDG search, and Google Search in tight
+        batches on a background thread. Rescores after each batch. Keeps running
+        until stopped.
+        """
+        updates = payload.model_dump(exclude_none=True) if payload else {}
+        return automation_controller.start_verification(updates=updates)
+
+    @app.post("/api/automation/stop-verification", dependencies=[Depends(require_mutation_auth)])
+    def api_stop_verification() -> dict:
+        """Stop the continuous verification loop."""
+        return automation_controller.stop_verification()
+
+    @app.post("/api/automation/verification-settings", dependencies=[Depends(require_mutation_auth)])
+    def api_verification_settings(payload: VerificationSettingsRequest) -> dict:
+        """Update continuous verification settings."""
+        updates = payload.model_dump(exclude_none=True)
+        automation_controller.update_verify_settings(updates)
+        return automation_controller.status()
+
     @app.get("/api/exports/files")
     def api_export_files() -> list[dict]:
         files = []
@@ -589,7 +936,11 @@ def create_app() -> FastAPI:
         if "/" in filename or "\\" in filename:
             raise HTTPException(status_code=400, detail="Invalid filename")
 
-        path = _export_dir() / filename
+        export_dir = _export_dir()
+        path = export_dir / filename
+        # Prevent symlink escape: resolved path must stay within export dir
+        if not path.resolve().is_relative_to(export_dir.resolve()):
+            raise HTTPException(status_code=400, detail="Invalid filename")
         if not path.exists() or not path.is_file():
             raise HTTPException(status_code=404, detail="File not found")
 

@@ -12,6 +12,9 @@ from .db import Base
 
 class Domain(Base):
     __tablename__ = "domains"
+    __table_args__ = (
+        Index("domains_status_idx", "status"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     domain: Mapped[str] = mapped_column(CITEXT, unique=True, nullable=False)
@@ -27,6 +30,9 @@ class Domain(Base):
 
 class City(Base):
     __tablename__ = "cities"
+    __table_args__ = (
+        Index("cities_name_idx", "name"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(Text, nullable=False)
@@ -43,6 +49,9 @@ class City(Base):
 
 class WhoisCheck(Base):
     __tablename__ = "whois_checks"
+    __table_args__ = (
+        Index("whois_domain_idx", "domain_id"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     domain_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("domains.id", ondelete="CASCADE"), nullable=False)
@@ -63,6 +72,9 @@ class WhoisCheck(Base):
 
 class DomainToolsCheck(Base):
     __tablename__ = "domaintools_checks"
+    __table_args__ = (
+        Index("domaintools_domain_idx", "domain_id"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     domain_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("domains.id", ondelete="CASCADE"), nullable=False)
@@ -91,6 +103,8 @@ class Contact(Base):
     __tablename__ = "contacts"
     __table_args__ = (
         UniqueConstraint("org_id", "email", name="contacts_org_email_uidx"),
+        Index("contacts_email_idx", "email"),
+        Index("contacts_lead_score_idx", "lead_score"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -130,6 +144,13 @@ class OutreachExport(Base):
 
 class Business(Base):
     __tablename__ = "businesses"
+    __table_args__ = (
+        Index("businesses_website_score_idx", "website_url", "lead_score"),
+        Index("businesses_name_score_idx", "name", "lead_score"),
+        UniqueConstraint("source", "source_id", name="businesses_source_uidx"),
+        Index("businesses_lead_score_idx", "lead_score"),
+        Index("businesses_city_idx", "city_id"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     source: Mapped[str] = mapped_column(Text, nullable=False)
@@ -157,6 +178,7 @@ class BusinessOutreachExport(Base):
     __tablename__ = "business_outreach_exports"
     __table_args__ = (
         UniqueConstraint("business_id", "platform", name="business_outreach_exports_business_platform_uidx"),
+        Index("business_outreach_exports_platform_status_idx", "platform", "status"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

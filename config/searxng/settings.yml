@@ -1,0 +1,69 @@
+use_default_settings: true
+
+general:
+  instance_name: "Domain Pipeline Search"
+  debug: false
+
+server:
+  secret_key: "domain-pipeline-searxng-local-only"
+  limiter: false
+  image_proxy: false
+  # Bind to all interfaces inside the container
+  bind_address: "0.0.0.0"
+  port: 8080
+
+search:
+  safe_search: 0
+  autocomplete: ""
+  default_lang: "en"
+  formats:
+    - html
+    - json
+
+# Enable engines useful for business website verification
+engines:
+  # DuckDuckGo - primary free engine
+  - name: duckduckgo
+    engine: duckduckgo
+    shortcut: ddg
+    disabled: false
+
+  # Bing - strong business coverage
+  - name: bing
+    engine: bing
+    shortcut: bi
+    disabled: false
+
+  # Brave Search - good for local businesses
+  - name: brave
+    engine: brave
+    shortcut: br
+    disabled: false
+
+  # Mojeek - independent search engine
+  - name: mojeek
+    engine: mojeek
+    shortcut: mj
+    disabled: false
+
+  # Qwant - EU-based, different results
+  - name: qwant
+    engine: qwant
+    shortcut: qw
+    disabled: false
+
+  # Disable engines we don't need (save resources)
+  - name: wikidata
+    disabled: true
+  - name: wikipedia
+    disabled: true
+  - name: currency
+    disabled: true
+  - name: dictzone
+    disabled: true
+  - name: libretranslate
+    disabled: true
+  - name: lingva
+    disabled: true
+  - name: mwmbl
+    disabled: true

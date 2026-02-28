@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import csv
+import logging
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+import requests
 from sqlalchemy import and_, exists, func, not_, or_, select
 from sqlalchemy.orm import Session
 
@@ -200,6 +202,141 @@ DOMAIN_LIKE_TLDS = {
     ".biz", ".info", ".us", ".uk", ".app", ".dev", ".shop", ".store",
 }
 
+# Verification tracking — used across workers to determine verification coverage
+VERIFICATION_KEYS = [
+    "llm_verified",
+    "domain_guess_verified",
+    "ddg_verified",
+    "google_places_verified",
+    "foursquare_verified",
+    "google_search_verified",
+    "searxng_verified",
+]
+
+# Verification results that represent CONCLUSIVE checks (found actual search results)
+_CONCLUSIVE_RESULTS = {"no_website", "no_match", "has_website"}
+# Verification results that are INCONCLUSIVE (no search results returned)
+_INCONCLUSIVE_RESULTS = {"no_results", "no_candidates", "blocked", "poor_match"}
+
+# Mapping from verification key → result key in raw JSONB
+_RESULT_KEY_MAP = {
+    "llm_verified": "llm_verify_result",
+    "domain_guess_verified": "domain_guess_result",
+    "ddg_verified": "ddg_verify_result",
+    "google_places_verified": "google_places_verify_result",
+    "foursquare_verified": "foursquare_verify_result",
+    "google_search_verified": "google_search_result",
+    "searxng_verified": "searxng_result",
+}
+
+# Weighted confidence scores per source and result type.
+# Higher weight = more trustworthy evidence. Used instead of binary conclusive/inconclusive.
+CONFIDENCE_WEIGHTS: dict[str, dict[str, float]] = {
+    "domain_guess_verified": {
+        "no_match": 0.7,       # Tested 10-20 HTTP candidates, none matched
+        "has_website": 1.0,    # Found a working domain
+        "no_candidates": 0.1,  # Couldn't generate any domain candidates
+    },
+    "searxng_verified": {
+        "no_website": 0.9,     # Multi-engine search found only directories
+        "has_website": 1.0,    # Found official website in search results
+        "no_results": 0.1,     # Search returned nothing (inconclusive)
+    },
+    "llm_verified": {
+        "no_website": 0.8,     # LLM analyzed search results, concluded no website
+        "has_website": 0.9,    # LLM identified official website from results
+        "not_sure": 0.2,       # LLM couldn't determine from evidence
+        "no_results": 0.1,     # No search results to analyze
+    },
+    "ddg_verified": {
+        "no_website": 0.6,     # DDG alone is less reliable
+        "has_website": 0.8,
+        "no_results": 0.05,    # DDG often returns nothing (broken scraper)
+    },
+    "google_search_verified": {
+        "no_website": 0.6,
+        "has_website": 0.8,
+        "no_results": 0.05,    # Google blocks scraping frequently
+        "blocked": 0.0,
+    },
+    "google_places_verified": {
+        "no_website": 0.9,     # API-quality data, very reliable
+        "has_website": 1.0,
+    },
+    "foursquare_verified": {
+        "no_website": 0.7,
+        "has_website": 0.9,
+    },
+}
+
+
+def compute_verification_count(raw: dict | None) -> int:
+    """Count how many verification sources have checked this business."""
+    if not raw:
+        return 0
+    return sum(1 for key in VERIFICATION_KEYS if raw.get(key))
+
+
+def get_verification_sources(raw: dict | None) -> list[str]:
+    """Return list of verification source names that have checked this business."""
+    if not raw:
+        return []
+    return [key.replace("_verified", "") for key in VERIFICATION_KEYS if raw.get(key)]
+
+
+def compute_verification_weight(raw: dict | None) -> float:
+    """Compute the total weighted confidence score from all verification sources.
+
+    Each source/result combination has a weight reflecting its reliability.
+    Returns total weight (0.0 if unverified).
+    """
+    if not raw:
+        return 0.0
+
+    total = 0.0
+    for vkey in VERIFICATION_KEYS:
+        if not raw.get(vkey):
+            continue
+        result_key = _RESULT_KEY_MAP.get(vkey)
+        if not result_key:
+            # Legacy data without result key — treat as medium-weight evidence
+            total += 0.5
+            continue
+        result_value = raw.get(result_key, "")
+        weights = CONFIDENCE_WEIGHTS.get(vkey, {})
+        total += weights.get(result_value, 0.1)  # default 0.1 for unknown results
+
+    return total
+
+
+def compute_verification_confidence(raw: dict | None) -> str:
+    """Compute verification confidence level using weighted scoring.
+
+    Returns one of: "high", "medium", "low", "unverified".
+
+    Weights are assigned per source and result type. E.g.:
+    - Domain Guess no_match (0.7) + SearXNG no_website (0.9) = 1.6 → "high"
+    - Domain Guess no_match (0.7) alone = 0.7 → "medium"
+    - Domain Guess no_match (0.7) + LLM not_sure (0.2) = 0.9 → "medium"
+    - DDG no_results (0.05) only = 0.05 → "low"
+
+    Thresholds: high >= 1.5, medium >= 0.7, low > 0, unverified = 0
+    """
+    if not raw:
+        return "unverified"
+
+    # Check if any verification source has run
+    has_any = any(raw.get(vkey) for vkey in VERIFICATION_KEYS)
+    if not has_any:
+        return "unverified"
+
+    weight = compute_verification_weight(raw)
+    if weight >= 1.5:
+        return "high"
+    if weight >= 0.7:
+        return "medium"
+    return "low"
+
 
 def _name_looks_like_domain(name: str) -> bool:
     """Check if business name looks like a domain name (e.g. 'iRepair.ca')."""
@@ -209,11 +346,78 @@ def _name_looks_like_domain(name: str) -> bool:
     return any(clean.endswith(tld) or tld + "/" in clean for tld in DOMAIN_LIKE_TLDS)
 
 
+logger = logging.getLogger(__name__)
+
+WIKIDATA_SPARQL_URL = "https://query.wikidata.org/sparql"
+_wikidata_chain_cache: Optional[set[str]] = None
+
+
+def _load_wikidata_chains() -> set[str]:
+    """Query Wikidata SPARQL for known business chains/franchises.
+
+    Returns a set of lowercase English business names. Cached after first call.
+    Falls back to empty set on failure (Wikidata down, network issues, etc.).
+    """
+    global _wikidata_chain_cache
+    if _wikidata_chain_cache is not None:
+        return _wikidata_chain_cache
+
+    query = """
+    SELECT DISTINCT ?label WHERE {
+      { ?item wdt:P31 wd:Q507619 . }
+      UNION
+      { ?item wdt:P31 wd:Q126793 . }
+      ?item rdfs:label ?label .
+      FILTER(LANG(?label) = "en")
+    }
+    """
+    try:
+        resp = requests.get(
+            WIKIDATA_SPARQL_URL,
+            params={"query": query, "format": "json"},
+            headers={"User-Agent": "domain-lead-pipeline/0.1"},
+            timeout=30,
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            names = {
+                binding["label"]["value"].strip().lower()
+                for binding in data.get("results", {}).get("bindings", [])
+                if binding.get("label", {}).get("value")
+            }
+            logger.info("Loaded %d chain names from Wikidata", len(names))
+            _wikidata_chain_cache = names
+            return names
+    except Exception as exc:
+        logger.warning("Wikidata chain query failed: %s", exc)
+
+    _wikidata_chain_cache = set()
+    return _wikidata_chain_cache
+
+
+def _is_wikidata_chain(business_name: str) -> bool:
+    """Check if business name matches a known Wikidata chain."""
+    if not business_name:
+        return False
+    chains = _load_wikidata_chains()
+    if not chains:
+        return False
+    normalized = business_name.strip().lower()
+    if normalized in chains:
+        return True
+    # Substring match for "Tim Hortons #1234" → "tim hortons"
+    for chain in chains:
+        if len(chain) >= 4 and chain in normalized:
+            return True
+    return False
+
+
 def _is_branded_chain(business: Business) -> bool:
-    """Detect branded chains/franchises from OSM tags.
+    """Detect branded chains/franchises from OSM tags and Wikidata.
 
     Businesses with brand/brand:wikidata/operator:wikidata tags are
     known chains that definitely have corporate websites.
+    Also checks against Wikidata's database of chain stores/franchises.
     """
     raw = business.raw or {}
     # brand:wikidata is the strongest signal — a well-known entity
@@ -221,6 +425,9 @@ def _is_branded_chain(business: Business) -> bool:
         return True
     # brand tag alone is also a strong signal (less strict)
     if raw.get("brand"):
+        return True
+    # Check against Wikidata known chains database
+    if _is_wikidata_chain(business.name):
         return True
     return False
 
@@ -299,6 +506,16 @@ def _score_business(business: Business, feature: dict) -> tuple[float, dict]:
     if not has_any_contact:
         score = min(score, 5.0)
 
+    # --- Verification confidence caps ---
+    # Unverified leads cannot reach export territory. Only conclusive verification
+    # (actual search results confirming no website) earns full score potential.
+    confidence = compute_verification_confidence(business.raw)
+    if confidence == "unverified":
+        score = min(score, 35.0)
+    elif confidence == "low":
+        score = min(score, 50.0)
+    # "medium" and "high" — no cap
+
     disqualify_reason = None
     if not has_any_contact:
         disqualify_reason = "no_contacts"
@@ -345,6 +562,7 @@ def _build_reasons(business: Business, feature: dict, disqualify_reason: str = N
         "hosted_domains": sorted(feature["hosted_domains"]),
         "parked_domains": sorted(feature["parked_domains"]),
         "domain_status_counts": feature["domain_status_counts"],
+        "verification_confidence": compute_verification_confidence(raw),
     }
 
 
@@ -409,6 +627,40 @@ def score_businesses(limit: Optional[int] = None, scope: Optional[str] = None, f
                 score, reasons = _score_business(business, feature)
                 business.lead_score = score
                 business.score_reasons = reasons
+                business.scored_at = datetime.now(timezone.utc)
+                processed += 1
+
+            # --- Score businesses that already have a website_url ---
+            # These came from OSM with a website tag or were enriched by
+            # Google Places/DDG/Foursquare. They should be disqualified (score=0)
+            # so they never appear in leads.
+            has_website_conditions = [
+                Business.website_url.isnot(None),
+                Business.website_url != "",
+            ]
+            if force_rescore:
+                has_website_stmt = (
+                    select(Business)
+                    .where(*has_website_conditions)
+                    .order_by(Business.created_at)
+                )
+            else:
+                has_website_stmt = (
+                    select(Business)
+                    .where(*has_website_conditions)
+                    .where(Business.scored_at.is_(None))
+                    .order_by(Business.created_at)
+                )
+            if batch_size is not None:
+                has_website_stmt = has_website_stmt.limit(batch_size)
+
+            has_website_businesses = session.execute(has_website_stmt).scalars().all()
+            for business in has_website_businesses:
+                business.lead_score = 0.0
+                business.score_reasons = {
+                    "disqualify_reason": "has_website",
+                    "website_url": business.website_url,
+                }
                 business.scored_at = datetime.now(timezone.utc)
                 processed += 1
 

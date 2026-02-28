@@ -17,6 +17,8 @@ import time
 from typing import Any, Optional
 from urllib.parse import quote_plus
 
+from tenacity import retry, wait_exponential, stop_after_attempt, retry_if_exception_type
+
 import requests
 from sqlalchemy import and_, exists, func, not_, or_, select
 
@@ -66,6 +68,15 @@ class PlacesClient:
     def calls_made(self) -> int:
         return self._calls_made
 
+    def return_none_on_error(retry_state):
+        return None
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type(requests.RequestException),
+        retry_error_callback=return_none_on_error
+    )
     def text_search(
         self,
         query: str,
@@ -94,38 +105,31 @@ class PlacesClient:
                 }
             }
 
-        try:
-            resp = self.session.post(
-                PLACES_TEXT_SEARCH_URL,
-                json=body,
-                headers={"X-Goog-FieldMask": SEARCH_FIELD_MASK},
-                timeout=10,
+        resp = self.session.post(
+            PLACES_TEXT_SEARCH_URL,
+            json=body,
+            headers={"X-Goog-FieldMask": SEARCH_FIELD_MASK},
+            timeout=10,
+        )
+        self._calls_made += 1
+
+        if resp.status_code == 429:
+            resp.raise_for_status()
+
+        if resp.status_code != 200:
+            logger.warning(
+                "Google Places API error %d: %s",
+                resp.status_code,
+                resp.text[:200],
             )
-            self._calls_made += 1
-
-            if resp.status_code == 429:
-                logger.warning("Google Places API rate limited, backing off")
-                time.sleep(2)
-                return None
-
-            if resp.status_code != 200:
-                logger.warning(
-                    "Google Places API error %d: %s",
-                    resp.status_code,
-                    resp.text[:200],
-                )
-                return None
-
-            data = resp.json()
-            places = data.get("places", [])
-            if not places:
-                return None
-
-            return places[0]
-
-        except requests.RequestException as exc:
-            logger.warning("Google Places API request failed: %s", exc)
             return None
+
+        data = resp.json()
+        places = data.get("places", [])
+        if not places:
+            return None
+
+        return places[0]
 
 
 def _build_search_query(business: Business, city_name: Optional[str] = None) -> str:
@@ -269,6 +273,7 @@ def enrich_business(
     raw = business.raw or {}
     raw["google_places"] = enrichment
     business.raw = raw
+    business.scored_at = None
 
     return enrichment
 
@@ -540,6 +545,7 @@ def verify_websites(
                     raw["google_places_verified"] = True
                     raw["google_places_verify_result"] = "no_match"
                     business.raw = raw
+                    business.scored_at = None
                     no_match += 1
                     processed += 1
                     time.sleep(0.15)
@@ -553,6 +559,7 @@ def verify_websites(
                         place.get("displayName", {}).get("text")
                     )
                     business.raw = raw
+                    business.scored_at = None
                     no_match += 1
                     processed += 1
                     time.sleep(0.15)
@@ -606,6 +613,7 @@ def verify_websites(
                 # Store full enrichment data
                 raw["google_places"] = enrichment
                 business.raw = raw
+                business.scored_at = None
 
                 processed += 1
 

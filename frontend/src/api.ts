@@ -55,13 +55,68 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload)
     }),
-  validateDomains: (payload: Record<string, unknown>) =>
-    request<Record<string, unknown>>("/api/actions/validate-domains", {
+  validateDomains: (payload: Record<string, unknown>) => {
+    const params = new URLSearchParams();
+    if (payload.sync_limit != null) params.set("sync_limit", String(payload.sync_limit));
+    if (payload.rdap_limit != null) params.set("rdap_limit", String(payload.rdap_limit));
+    if (payload.rescore != null) params.set("rescore", String(payload.rescore));
+    const qs = params.toString();
+    return request<Record<string, unknown>>(`/api/actions/validate-domains${qs ? `?${qs}` : ""}`, {
+      method: "POST",
+    });
+  },
+  verifyWebsites: (payload: Record<string, unknown>) =>
+    request<Record<string, unknown>>("/api/actions/verify-websites", {
       method: "POST",
       body: JSON.stringify(payload)
     }),
-  verifyWebsites: (payload: Record<string, unknown>) =>
-    request<Record<string, unknown>>("/api/actions/verify-websites", {
+  domainGuess: (payload: Record<string, unknown>) =>
+    request<Record<string, unknown>>("/api/actions/domain-guess", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
+  verifyWebsitesDDG: (payload: Record<string, unknown>) =>
+    request<Record<string, unknown>>("/api/actions/verify-websites-ddg", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
+  googleSearchVerify: (payload: Record<string, unknown>) =>
+    request<Record<string, unknown>>("/api/actions/verify-websites-google-search", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
+  verifyWebsitesLLM: (payload: Record<string, unknown>) =>
+    request<Record<string, unknown>>("/api/actions/verify-websites-llm", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
+  verifySearXNG: (payload: Record<string, unknown>) =>
+    request<Record<string, unknown>>("/api/actions/verify-websites-searxng", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
+  enrichFoursquare: (payload: Record<string, unknown>) =>
+    request<Record<string, unknown>>("/api/actions/enrich-foursquare", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
+  verifyWebsitesFoursquare: (payload: Record<string, unknown>) =>
+    request<Record<string, unknown>>("/api/actions/verify-websites-foursquare", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
+  hunterEnrich: (payload: Record<string, unknown>) =>
+    request<Record<string, unknown>>("/api/actions/hunter-enrich", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
+  exportGoogleSheets: (payload: Record<string, unknown>) =>
+    request<Record<string, unknown>>("/api/actions/export-google-sheets", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
+  testNotification: (payload: Record<string, unknown>) =>
+    request<Record<string, unknown>>("/api/actions/test-notification", {
       method: "POST",
       body: JSON.stringify(payload)
     }),
@@ -87,5 +142,24 @@ export const api = {
     request<AutomationStatus>("/api/automation/settings", {
       method: "POST",
       body: JSON.stringify(payload)
-    })
+    }),
+  // Verification loop controls
+  startVerification: (payload?: Record<string, unknown>) =>
+    request<Record<string, unknown>>("/api/automation/start-verification", {
+      method: "POST",
+      body: JSON.stringify(payload ?? {})
+    }),
+  stopVerification: () =>
+    request<Record<string, unknown>>("/api/automation/stop-verification", {
+      method: "POST"
+    }),
+  updateVerificationSettings: (payload: Record<string, unknown>) =>
+    request<Record<string, unknown>>("/api/automation/verification-settings", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
+  resetDDGVerification: () =>
+    request<Record<string, unknown>>("/api/actions/reset-ddg-verification", {
+      method: "POST"
+    }),
 };

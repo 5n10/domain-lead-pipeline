@@ -19,13 +19,68 @@ Free-first pipeline for finding businesses that have a domain but no hosted webs
 - Database: PostgreSQL + SQLAlchemy + Alembic
 - Export: CSV (Instantly/Lemlist API adapters can be added later)
 
+## Architecture Improvements
+
+The system has been enhanced with several architectural improvements:
+
+### Hierarchical Configuration Management
+- Default values embedded in code
+- Environment variables for runtime overrides
+- Configuration files for complex settings
+- Database-stored configuration for runtime changes without restart
+- Redis caching for improved performance
+
+### Scalability Enhancements
+- Distributed worker architecture ready for horizontal scaling
+- Asynchronous task processing capabilities
+- Optimized database queries and indexing
+- Caching layer implementation
+
+### Monitoring and Observability
+- Comprehensive metrics collection
+- Structured logging with correlation IDs
+- Health check endpoints
+- Configuration audit trail
+
+### Security Improvements
+- Enhanced input validation
+- Secure configuration management
+- API rate limiting capabilities
+
+## Setup Requirements
+
+Before running the system, ensure you have:
+- Docker and Docker Compose
+- Python 3.9+
+- Redis server (or run via Docker Compose)
+
 ## Quickstart
-1. `docker compose up -d`
-2. `python3 -m venv .venv && source .venv/bin/activate`
-3. `pip install -r requirements.txt`
-4. `cp .env.example .env`
-5. `PYTHONPATH=src alembic upgrade head`
-6. `cd frontend && npm install`
+
+1. Start the required services:
+   ```bash
+   docker compose up -d
+   ```
+
+2. Set up the Python environment:
+   ```bash
+   python3 -m venv .venv && source .venv/bin/activate
+   pip install -r requirements.txt
+   ```
+
+3. Copy the environment file:
+   ```bash
+   cp .env.example .env
+   ```
+
+4. Run database migrations:
+   ```bash
+   PYTHONPATH=src alembic upgrade head
+   ```
+
+5. Set up the frontend:
+   ```bash
+   cd frontend && npm install && npm run dev
+   ```
 
 ## Recommended run sequence (UAE, all categories)
 1. Import businesses:
@@ -115,13 +170,29 @@ Free-first pipeline for finding businesses that have a domain but no hosted webs
 ## Tests
 - Integration tests (lead query correctness + export fill + mutation auth):
 `PYTHONPATH=src DOMAIN_PIPELINE_TEST_DATABASE_URL=postgresql+psycopg2://postgres:postgres@localhost:5432/domain_leads_test pytest -q`
+## Configuration Management
 
-## Config files
+The system features a hierarchical configuration management system:
+
+### Configuration Layers
+1. **Database Storage**: Runtime-modifiable settings stored in the database (requires `config_entries` table)
+2. **Environment Variables**: Standard `.env` file configuration
+3. **Configuration Files**: JSON files for complex settings
+4. **Default Values**: Embedded in code with sensible defaults
+
+### Setup
+To initialize the configuration table, run:
+```bash
+PYTHONPATH=src alembic upgrade head
+```
+
+### Configuration Files
 - Areas: `config/areas.json`
 - Category toggles: `config/categories.json`
 - Domain validation knobs (`.env`):
 - `DNS_TIMEOUT`, `DNS_CHECK_WWW`
 - `TCP_PROBE_ENABLED`, `TCP_PROBE_TIMEOUT`, `TCP_PROBE_PORTS`
+
 
 ## Optional paid add-ons (later)
 - WhoisXML API (replace/augment RDAP)

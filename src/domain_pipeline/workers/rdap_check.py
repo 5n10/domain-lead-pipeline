@@ -357,6 +357,37 @@ def process_domain(domain_row: Domain, rdap_client: RdapClient) -> WhoisCheck:
     return check
 
 
+COMMON_CRAWL_CDX_URL = "https://index.commoncrawl.org/CC-MAIN-2025-04-index"
+
+
+def common_crawl_check(domain: str, timeout: int = 10) -> dict:
+    """Check Common Crawl CDX for historical web content on a domain.
+
+    If the domain was ever crawled by Common Crawl, it had web content
+    at some point — supplementary signal that the domain is/was active.
+    This does NOT change domain status; it's stored for informational use.
+
+    Returns: {"has_crawl_data": bool, "record_count": int, "latest_timestamp": str|None}
+    """
+    url = f"{COMMON_CRAWL_CDX_URL}?url={domain}/*&output=json&limit=1"
+    try:
+        resp = requests.get(url, timeout=timeout)
+        if resp.status_code == 200 and resp.text.strip():
+            lines = resp.text.strip().split("\n")
+            try:
+                record = json.loads(lines[0])
+                return {
+                    "has_crawl_data": True,
+                    "record_count": len(lines),
+                    "latest_timestamp": record.get("timestamp"),
+                }
+            except (json.JSONDecodeError, IndexError):
+                pass
+        return {"has_crawl_data": False, "record_count": 0, "latest_timestamp": None}
+    except Exception:
+        return {"has_crawl_data": False, "record_count": 0, "latest_timestamp": None}
+
+
 def _process_domain_thread(domain_name: str, config) -> dict[str, Any]:
     """Process a single domain in a worker thread (no DB access).
 
@@ -462,6 +493,7 @@ def _process_domain_thread(domain_name: str, config) -> dict[str, Any]:
                     "port": tcp_port,
                     "ports_checked": list(config.tcp_probe_ports),
                 },
+                "common_crawl": common_crawl_check(domain_name),
             },
         },
     }
