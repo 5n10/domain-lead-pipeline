@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 from .config import load_config
+from .pool_monitor import attach_pool_listeners, get_pool_stats
 
 
 logger = logging.getLogger(__name__)
@@ -23,7 +24,13 @@ _engine = create_engine(
     pool_recycle=3600,  # Recycle connections after 1 hour to prevent stale connections
     pool_timeout=30,    # Timeout after 30 seconds waiting for a connection from the pool
 )
+attach_pool_listeners(_engine)
 SessionLocal = sessionmaker(bind=_engine, expire_on_commit=False)
+
+
+def pool_stats() -> dict:
+    """Return current connection pool statistics."""
+    return get_pool_stats(_engine)
 
 
 @contextmanager

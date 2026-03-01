@@ -106,9 +106,13 @@ class ConfigSchema:
     instantly_api_key: Optional[str] = field(default_factory=lambda: _env_str("INSTANTLY_API_KEY"))
     lemlist_api_key: Optional[str] = field(default_factory=lambda: _env_str("LEMLIST_API_KEY"))
 
-    # Notifications (ntfy.sh)
+    # SearXNG
+    searxng_url: str = field(default_factory=lambda: os.getenv("SEARXNG_URL", "http://localhost:8888/search"))
+
+    # Notifications (ntfy.sh + Slack)
     ntfy_topic: Optional[str] = field(default_factory=lambda: _env_str("NTFY_TOPIC"))
     ntfy_server: str = field(default_factory=lambda: os.getenv("NTFY_SERVER", "https://ntfy.sh"))
+    slack_webhook_url: Optional[str] = field(default_factory=lambda: _env_str("SLACK_WEBHOOK_URL"))
 
     # Google Sheets export
     google_sheets_credentials_file: Optional[str] = field(default_factory=lambda: _env_str("GOOGLE_SHEETS_CREDENTIALS_FILE"))

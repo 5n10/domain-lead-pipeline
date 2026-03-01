@@ -136,6 +136,21 @@ export type VerificationStatus = {
   totals: VerificationTotals;
 };
 
+export type DeadLetterBusiness = {
+  id: string;
+  name: string | null;
+  category: string | null;
+  retry_count: number;
+  error: string | null;
+  error_at: string | null;
+};
+
+export type DeadLetterResponse = {
+  total: number;
+  returned: number;
+  items: DeadLetterBusiness[];
+};
+
 export type AutomationStatus = {
   running: boolean;
   busy: boolean;

@@ -46,6 +46,21 @@ function LiveVerificationBanner({ automation }: { automation: AutomationStatus |
           <span className="text-xs bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-medium">{v.batch_count} cycles</span>
         )}
       </div>
+      {/* Progress bar */}
+      {v.running && totalProcessed > 0 && (
+        <div className="mb-3">
+          <div className="flex justify-between text-[0.65rem] text-text-secondary mb-1">
+            <span>{totalProcessed.toLocaleString()} processed</span>
+            <span>{totalWebsites.toLocaleString()} websites found ({totalProcessed > 0 ? ((totalWebsites / totalProcessed) * 100).toFixed(1) : 0}% hit rate)</span>
+          </div>
+          <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-emerald-500 rounded-full transition-all duration-1000"
+              style={{ width: `${Math.min((totalWebsites / Math.max(totalProcessed, 1)) * 100 * 5, 100)}%` }}
+            />
+          </div>
+        </div>
+      )}
       <div className="grid grid-cols-3 md:grid-cols-7 gap-2">
         {[
           { label: "DG", val: totals.domain_guess_processed, found: totals.domain_guess_websites, color: "text-blue-700" },

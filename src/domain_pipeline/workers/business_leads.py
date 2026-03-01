@@ -627,6 +627,7 @@ def score_businesses(limit: Optional[int] = None, scope: Optional[str] = None, f
                 score, reasons = _score_business(business, feature)
                 business.lead_score = score
                 business.score_reasons = reasons
+                business.verification_confidence = compute_verification_confidence(business.raw)
                 business.scored_at = datetime.now(timezone.utc)
                 processed += 1
 
@@ -661,6 +662,7 @@ def score_businesses(limit: Optional[int] = None, scope: Optional[str] = None, f
                     "disqualify_reason": "has_website",
                     "website_url": business.website_url,
                 }
+                business.verification_confidence = compute_verification_confidence(business.raw)
                 business.scored_at = datetime.now(timezone.utc)
                 processed += 1
 

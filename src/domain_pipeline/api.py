@@ -11,13 +11,18 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, ConfigDict
+from slowapi import Limiter
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 from sqlalchemy import exists, func, not_, or_, select
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse
 from starlette.staticfiles import StaticFiles
 
 from .automation import AutomationController
 from .config import load_config
-from .db import session_scope
+from .logging_config import setup_logging, set_correlation_id, get_correlation_id
+from .db import pool_stats, session_scope
 from .metrics import collect_metrics
 from .models import (
     Business,
@@ -46,6 +51,14 @@ from .workers.domain_guess import run_batch as run_domain_guess
 from .workers.hunter import run_batch as run_hunter_enrich
 from .workers.sheets_export import export_to_sheets
 from .notifications import send_notification
+from .reporting import generate_daily_report
+from .retry import dead_letter_count, get_dead_letter_businesses
+from .workers.dedup import (
+    dismiss_duplicate,
+    duplicate_count,
+    get_duplicate_clusters,
+    run_dedup,
+)
 
 
 # Allowed configuration file paths for validation
@@ -57,9 +70,20 @@ MAX_CITY_LENGTH = 100
 MAX_PLATFORM_LENGTH = 50
 
 
+class CorrelationIDMiddleware(BaseHTTPMiddleware):
+    """Set a correlation ID for each request from header or generate one."""
+
+    async def dispatch(self, request: Request, call_next):
+        cid = request.headers.get("X-Correlation-ID") or None
+        cid = set_correlation_id(cid)
+        response = await call_next(request)
+        response.headers["X-Correlation-ID"] = cid
+        return response
+
+
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Add security headers to all responses."""
-    
+
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
         # Prevent clickjacking
@@ -340,10 +364,21 @@ class VerificationSettingsRequest(BaseModel):
 
 automation_controller = AutomationController()
 
+limiter = Limiter(key_func=get_remote_address)
+
+
+def _rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
+    return JSONResponse(
+        status_code=429,
+        content={"detail": f"Rate limit exceeded: {exc.detail}"},
+    )
+
 
 def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(_: FastAPI):
+        setup_logging(level=os.getenv("LOG_LEVEL", "INFO"),
+                      json_format=os.getenv("LOG_FORMAT", "json").lower() == "json")
         if automation_controller.auto_start_enabled:
             automation_controller.start()
         # Always start continuous verification on boot
@@ -355,9 +390,15 @@ def create_app() -> FastAPI:
             automation_controller.stop()
 
     app = FastAPI(title="Domain Lead Pipeline API", version="0.1.0", lifespan=lifespan)
-    
+
+    # Rate limiting
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
     # Add security headers middleware
     app.add_middleware(SecurityHeadersMiddleware)
+    # Add correlation ID middleware
+    app.add_middleware(CorrelationIDMiddleware)
     
     # Configure CORS with specific methods and headers instead of wildcards
     app.add_middleware(
@@ -370,10 +411,53 @@ def create_app() -> FastAPI:
 
     @app.get("/health")
     def health() -> dict:
-        return {"status": "ok"}
+        checks: dict = {}
+        overall = "ok"
+
+        # 1. Database connectivity
+        try:
+            with session_scope() as session:
+                session.execute(select(func.count()).select_from(Business).limit(1))
+            checks["database"] = {"status": "ok"}
+        except Exception as e:
+            checks["database"] = {"status": "error", "error": str(e)}
+            overall = "degraded"
+
+        # 2. SearXNG connectivity
+        config = load_config()
+        try:
+            import httpx
+            searxng_url = config.searxng_url.replace("/search", "")
+            r = httpx.get(searxng_url, timeout=5)
+            checks["searxng"] = {"status": "ok" if r.status_code < 500 else "error", "status_code": r.status_code}
+            if r.status_code >= 500:
+                overall = "degraded"
+        except Exception as e:
+            checks["searxng"] = {"status": "unreachable", "error": str(e)}
+            overall = "degraded"
+
+        # 3. API keys configured (names only, never values)
+        api_keys = {
+            "google_places": bool(config.google_places_api_key),
+            "foursquare": bool(config.foursquare_api_key),
+            "openrouter": bool(config.openrouter_api_key),
+            "gemini": bool(config.gemini_api_key),
+            "groq": bool(config.groq_api_key),
+            "hunter": bool(config.hunter_api_key),
+            "ntfy_topic": bool(config.ntfy_topic),
+            "slack_webhook": bool(config.slack_webhook_url),
+        }
+        checks["api_keys"] = api_keys
+
+        return {
+            "status": overall,
+            "pool": pool_stats(),
+            "checks": checks,
+        }
 
     @app.get("/api/metrics")
-    def api_metrics() -> dict:
+    @limiter.limit("30/minute")
+    def api_metrics(request: Request) -> dict:
         return collect_metrics()
 
     @app.get("/api/jobs")
@@ -550,8 +634,96 @@ def create_app() -> FastAPI:
             ).scalars().all()
         return [row for row in rows if row]
 
+    @app.get("/api/leads/business/{business_id}")
+    def api_business_detail(business_id: str) -> dict:
+        """Get full detail for a single business including verification history."""
+        import uuid as _uuid
+        try:
+            biz_uuid = _uuid.UUID(business_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid business ID")
+
+        with session_scope() as session:
+            row = session.execute(
+                select(Business, City)
+                .outerjoin(City, Business.city_id == City.id)
+                .where(Business.id == biz_uuid)
+            ).first()
+
+            if not row:
+                raise HTTPException(status_code=404, detail="Business not found")
+
+            business, city_row = row
+            feature_map = load_business_features(session, [business.id])
+            features = feature_map[business.id]
+
+            # Build verification timeline from raw JSONB
+            verification_timeline = []
+            raw = business.raw or {}
+            for key in VERIFICATION_KEYS:
+                if key in raw:
+                    entry = {
+                        "source": key.replace("_verified", ""),
+                        "timestamp": raw.get(key),
+                    }
+                    result_key = key.replace("_verified", "_verify_result")
+                    if result_key in raw:
+                        entry["result"] = raw[result_key]
+                    url_key = key.replace("_verified", "_website_url")
+                    if url_key in raw:
+                        entry["website_found"] = raw[url_key]
+                    verification_timeline.append(entry)
+
+            exported_platforms = session.execute(
+                select(BusinessOutreachExport.platform, BusinessOutreachExport.exported_at)
+                .where(BusinessOutreachExport.business_id == business.id)
+            ).all()
+
+            return {
+                "id": str(business.id),
+                "name": business.name,
+                "category": business.category,
+                "address": business.address,
+                "city": city_row.name if city_row else None,
+                "country": city_row.country if city_row else None,
+                "lat": float(business.lat) if business.lat else None,
+                "lon": float(business.lon) if business.lon else None,
+                "website_url": business.website_url,
+                "lead_score": float(business.lead_score) if business.lead_score is not None else None,
+                "score_reasons": business.score_reasons,
+                "scored_at": business.scored_at.isoformat() if business.scored_at else None,
+                "source": business.source,
+                "source_id": business.source_id,
+                "created_at": business.created_at.isoformat() if business.created_at else None,
+                "emails": sorted(features["emails"]),
+                "business_emails": sorted(features["business_emails"]),
+                "free_emails": sorted(features["free_emails"]),
+                "phones": sorted(features["phones"]),
+                "domains": sorted(features["domains"]),
+                "verified_unhosted_domains": sorted(features["verified_unhosted_domains"]),
+                "unregistered_domains": sorted(features["unregistered_domains"]),
+                "unknown_domains": sorted(features["unknown_domains"]),
+                "hosted_domains": sorted(features["hosted_domains"]),
+                "parked_domains": sorted(features["parked_domains"]),
+                "domain_status_counts": features["domain_status_counts"],
+                "verification_confidence": compute_verification_confidence(business.raw),
+                "verification_count": compute_verification_count(business.raw),
+                "verification_sources": get_verification_sources(business.raw),
+                "verification_timeline": verification_timeline,
+                "verification_retry_count": business.verification_retry_count,
+                "verification_error": business.verification_error,
+                "duplicate_of": str(business.duplicate_of) if business.duplicate_of else None,
+                "duplicate_reason": business.duplicate_reason,
+                "exports": [
+                    {"platform": p, "exported_at": ea.isoformat() if ea else None}
+                    for p, ea in exported_platforms
+                ],
+                "raw": business.raw,
+            }
+
     @app.post("/api/actions/pipeline-run", dependencies=[Depends(require_mutation_auth)])
-    def api_run_pipeline(payload: PipelineRunRequest) -> dict:
+    @limiter.limit("5/minute")
+    def api_run_pipeline(request: Request, payload: PipelineRunRequest) -> dict:
         # Validate file paths to prevent directory traversal
         _validate_file_path(payload.areas_file, "areas_file")
         _validate_file_path(payload.categories_file, "categories_file")
@@ -582,7 +754,8 @@ def create_app() -> FastAPI:
             automation_controller._run_lock.release()
 
     @app.post("/api/actions/business-score", dependencies=[Depends(require_mutation_auth)])
-    def api_score_businesses(payload: BusinessScoreRequest) -> dict:
+    @limiter.limit("10/minute")
+    def api_score_businesses(request: Request, payload: BusinessScoreRequest) -> dict:
         processed = score_businesses(
             limit=payload.limit,
             scope=payload.scope,
@@ -591,7 +764,9 @@ def create_app() -> FastAPI:
         return {"processed": processed}
 
     @app.post("/api/actions/validate-domains", dependencies=[Depends(require_mutation_auth)])
+    @limiter.limit("5/minute")
     def api_validate_domains(
+        request: Request,
         sync_limit: Optional[int] = Query(default=None),
         rdap_limit: Optional[int] = Query(default=None),
         rescore: bool = Query(default=True),
@@ -620,7 +795,8 @@ def create_app() -> FastAPI:
         }
 
     @app.post("/api/actions/enrich-google-places", dependencies=[Depends(require_mutation_auth)])
-    def api_enrich_google_places(payload: GooglePlacesEnrichRequest) -> dict:
+    @limiter.limit("10/minute")
+    def api_enrich_google_places(request: Request, payload: GooglePlacesEnrichRequest) -> dict:
         """Enrich businesses with Google Places data (phone, website, rating).
 
         Free tier: 10,000 calls/month on Essentials SKUs.
@@ -637,7 +813,8 @@ def create_app() -> FastAPI:
         return result
 
     @app.post("/api/actions/verify-websites", dependencies=[Depends(require_mutation_auth)])
-    def api_verify_websites(payload: GooglePlacesVerifyRequest) -> dict:
+    @limiter.limit("10/minute")
+    def api_verify_websites(request: Request, payload: GooglePlacesVerifyRequest) -> dict:
         """Verify whether potential leads actually have websites via Google Places.
 
         This is the critical quality gate. For each business scoring >= min_score
@@ -656,7 +833,8 @@ def create_app() -> FastAPI:
         return result
 
     @app.post("/api/actions/domain-guess", dependencies=[Depends(require_mutation_auth)])
-    def api_domain_guess(payload: DomainGuessRequest) -> dict:
+    @limiter.limit("10/minute")
+    def api_domain_guess(request: Request, payload: DomainGuessRequest) -> dict:
         """Guess domains from business names and check via HTTP HEAD.
 
         FREE — no API key, no rate limits. ~500 businesses/minute.
@@ -673,7 +851,8 @@ def create_app() -> FastAPI:
         return result
 
     @app.post("/api/actions/verify-websites-ddg", dependencies=[Depends(require_mutation_auth)])
-    def api_verify_websites_ddg(payload: DDGVerifyRequest) -> dict:
+    @limiter.limit("10/minute")
+    def api_verify_websites_ddg(request: Request, payload: DDGVerifyRequest) -> dict:
         """Verify whether leads have websites via DuckDuckGo search.
 
         Free, no API key required. Searches the web for each business to
@@ -689,7 +868,8 @@ def create_app() -> FastAPI:
         return result
 
     @app.post("/api/actions/verify-websites-llm", dependencies=[Depends(require_mutation_auth)])
-    def api_verify_websites_llm(payload: LLMVerifyRequest) -> dict:
+    @limiter.limit("10/minute")
+    def api_verify_websites_llm(request: Request, payload: LLMVerifyRequest) -> dict:
         """Verify whether leads have websites via an LLM.
 
         Requires OPENROUTER_API_KEY, GEMINI_API_KEY, or GROQ_API_KEY.
@@ -705,7 +885,8 @@ def create_app() -> FastAPI:
         return result
 
     @app.post("/api/actions/verify-websites-google-search", dependencies=[Depends(require_mutation_auth)])
-    def api_verify_websites_google_search(payload: GoogleSearchVerifyRequest) -> dict:
+    @limiter.limit("10/minute")
+    def api_verify_websites_google_search(request: Request, payload: GoogleSearchVerifyRequest) -> dict:
         """Verify whether leads have websites via Google Search scraping.
 
         Free, no API key required. Additional verification stage that searches
@@ -724,7 +905,8 @@ def create_app() -> FastAPI:
         return result
 
     @app.post("/api/actions/verify-websites-searxng", dependencies=[Depends(require_mutation_auth)])
-    def api_verify_websites_searxng(payload: SearXNGVerifyRequest) -> dict:
+    @limiter.limit("10/minute")
+    def api_verify_websites_searxng(request: Request, payload: SearXNGVerifyRequest) -> dict:
         """Verify whether leads have websites via SearXNG meta-search.
 
         Uses local SearXNG instance aggregating DDG, Bing, Brave, Mojeek, etc.
@@ -743,7 +925,8 @@ def create_app() -> FastAPI:
         return result
 
     @app.post("/api/actions/enrich-foursquare", dependencies=[Depends(require_mutation_auth)])
-    def api_enrich_foursquare(payload: FoursquareEnrichRequest) -> dict:
+    @limiter.limit("10/minute")
+    def api_enrich_foursquare(request: Request, payload: FoursquareEnrichRequest) -> dict:
         """Enrich businesses with Foursquare Places data (phone, website, rating).
 
         Free tier: 10,000 calls/month. Requires FOURSQUARE_API_KEY.
@@ -758,7 +941,8 @@ def create_app() -> FastAPI:
         return result
 
     @app.post("/api/actions/verify-websites-foursquare", dependencies=[Depends(require_mutation_auth)])
-    def api_verify_websites_foursquare(payload: FoursquareVerifyRequest) -> dict:
+    @limiter.limit("10/minute")
+    def api_verify_websites_foursquare(request: Request, payload: FoursquareVerifyRequest) -> dict:
         """Verify whether leads have websites via Foursquare Places API.
 
         Supplementary to Google Places verification. Requires FOURSQUARE_API_KEY.
@@ -773,7 +957,8 @@ def create_app() -> FastAPI:
         return result
 
     @app.post("/api/actions/hunter-enrich", dependencies=[Depends(require_mutation_auth)])
-    def api_hunter_enrich(payload: HunterEnrichRequest) -> dict:
+    @limiter.limit("10/minute")
+    def api_hunter_enrich(request: Request, payload: HunterEnrichRequest) -> dict:
         """Enrich lead businesses with email contacts via Hunter.io.
 
         Free tier: 25 searches/month. Requires HUNTER_API_KEY.
@@ -781,7 +966,8 @@ def create_app() -> FastAPI:
         return run_hunter_enrich(limit=payload.limit)
 
     @app.post("/api/actions/export-google-sheets", dependencies=[Depends(require_mutation_auth)])
-    def api_export_google_sheets(payload: SheetsExportRequest) -> dict:
+    @limiter.limit("5/minute")
+    def api_export_google_sheets(request: Request, payload: SheetsExportRequest) -> dict:
         """Export leads directly to a Google Sheet.
 
         Requires GOOGLE_SHEETS_CREDENTIALS_FILE and GOOGLE_SHEETS_SPREADSHEET_ID.
@@ -795,7 +981,8 @@ def create_app() -> FastAPI:
         )
 
     @app.post("/api/actions/test-notification", dependencies=[Depends(require_mutation_auth)])
-    def api_test_notification(payload: TestNotificationRequest) -> dict:
+    @limiter.limit("5/minute")
+    def api_test_notification(request: Request, payload: TestNotificationRequest) -> dict:
         """Send a test push notification via ntfy.sh.
 
         Requires NTFY_TOPIC to be configured.
@@ -808,8 +995,14 @@ def create_app() -> FastAPI:
         )
         return {"sent": success}
 
+    @app.post("/api/actions/daily-report", dependencies=[Depends(require_mutation_auth)])
+    @limiter.limit("3/minute")
+    def api_daily_report(request: Request) -> dict:
+        return generate_daily_report()
+
     @app.post("/api/actions/business-export", dependencies=[Depends(require_mutation_auth)])
-    def api_export_businesses(payload: BusinessExportRequest) -> dict:
+    @limiter.limit("10/minute")
+    def api_export_businesses(request: Request, payload: BusinessExportRequest) -> dict:
         path = export_business_leads(
             platform=payload.platform,
             min_score=payload.min_score,
@@ -822,7 +1015,8 @@ def create_app() -> FastAPI:
         return {"path": str(path) if path else None}
 
     @app.post("/api/actions/reset-ddg-verification", dependencies=[Depends(require_mutation_auth)])
-    def api_reset_ddg_verification() -> dict:
+    @limiter.limit("3/minute")
+    def api_reset_ddg_verification(request: Request) -> dict:
         """Clear ALL existing DDG verification data and force rescore.
 
         The duckduckgo_search library (v8.1.1) was broken — it returned 0 results
@@ -915,6 +1109,47 @@ def create_app() -> FastAPI:
         updates = payload.model_dump(exclude_none=True)
         automation_controller.update_verify_settings(updates)
         return automation_controller.status()
+
+    @app.get("/api/dead-letter")
+    def api_dead_letter(
+        limit: int = Query(default=200, ge=1, le=2000),
+        offset: int = Query(default=0, ge=0),
+    ) -> dict:
+        items = get_dead_letter_businesses(limit=limit, offset=offset)
+        total = dead_letter_count()
+        return {
+            "total": total,
+            "returned": len(items),
+            "items": items,
+        }
+
+    @app.get("/api/duplicates")
+    def api_duplicates(
+        limit: int = Query(default=100, ge=1, le=1000),
+        offset: int = Query(default=0, ge=0),
+    ) -> dict:
+        clusters = get_duplicate_clusters(limit=limit, offset=offset)
+        total = duplicate_count()
+        return {
+            "total": total,
+            "returned": len(clusters),
+            "clusters": clusters,
+        }
+
+    @app.post("/api/actions/run-dedup")
+    @limiter.limit("5/minute")
+    def api_run_dedup(request: Request, _auth: None = Depends(require_mutation_auth)) -> dict:
+        return run_dedup()
+
+    @app.post("/api/actions/dismiss-duplicate")
+    @limiter.limit("30/minute")
+    def api_dismiss_duplicate(
+        request: Request,
+        business_id: str = Query(...),
+        _auth: None = Depends(require_mutation_auth),
+    ) -> dict:
+        dismissed = dismiss_duplicate(business_id)
+        return {"dismissed": dismissed}
 
     @app.get("/api/exports/files")
     def api_export_files() -> list[dict]:

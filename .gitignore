@@ -12,6 +12,7 @@ venv/
 logs/
 run/
 exports/
+backups/
 .DS_Store
 .mypy_cache/
 .pytest_cache/

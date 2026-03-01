@@ -165,10 +165,16 @@ class Business(Base):
     lat: Mapped[Optional[float]] = mapped_column(Numeric)
     lon: Mapped[Optional[float]] = mapped_column(Numeric)
     raw: Mapped[Optional[dict]] = mapped_column(JSONB)
+    verification_confidence: Mapped[Optional[str]] = mapped_column(Text)
+    verification_retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    verification_error: Mapped[Optional[str]] = mapped_column(Text)
+    verification_error_at: Mapped[Optional[DateTime]] = mapped_column(DateTime(timezone=True))
+    duplicate_of: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("businesses.id", ondelete="SET NULL"))
+    duplicate_reason: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     city_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("cities.id", ondelete="SET NULL"))
-    city: Mapped[Optional[City]] = relationship("City", back_populates="businesses")
+    city: Mapped[Optional[City]] = relationship("City", back_populates="businesses", foreign_keys=[city_id])
     contacts: Mapped[list[BusinessContact]] = relationship("BusinessContact", back_populates="business", cascade="all, delete-orphan")
     domain_links: Mapped[list[BusinessDomainLink]] = relationship("BusinessDomainLink", back_populates="business", cascade="all, delete-orphan")
     exports: Mapped[list[BusinessOutreachExport]] = relationship("BusinessOutreachExport", back_populates="business", cascade="all, delete-orphan")
@@ -223,6 +229,34 @@ class BusinessDomainLink(Base):
 
     business: Mapped[Business] = relationship("Business", back_populates="domain_links")
     domain: Mapped[Domain] = relationship("Domain", back_populates="business_links")
+
+
+class VerificationQueueItem(Base):
+    """Queue of businesses awaiting verification processing.
+
+    Workers claim items using PostgreSQL advisory locks on the business_id
+    to prevent duplicate processing across concurrent workers.
+    """
+    __tablename__ = "verification_queue"
+    __table_args__ = (
+        Index("vq_status_priority_idx", "status", "priority", "created_at"),
+        Index("vq_business_idx", "business_id"),
+        Index("vq_layer_idx", "layer"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    business_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("businesses.id", ondelete="CASCADE"), nullable=False)
+    layer: Mapped[str] = mapped_column(Text, nullable=False)  # domain_guess, searxng, llm, ddg, google_search
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="pending", server_default="pending")
+    priority: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    claimed_at: Mapped[Optional[DateTime]] = mapped_column(DateTime(timezone=True))
+    claimed_by: Mapped[Optional[str]] = mapped_column(Text)
+    completed_at: Mapped[Optional[DateTime]] = mapped_column(DateTime(timezone=True))
+    error: Mapped[Optional[str]] = mapped_column(Text)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    business: Mapped[Business] = relationship("Business")
 
 
 class JobRun(Base):

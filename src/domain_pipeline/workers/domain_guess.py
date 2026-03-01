@@ -101,6 +101,39 @@ STRIP_ALWAYS = {
 # Combined set for backward compatibility
 STOP_WORDS = ARTICLE_WORDS | STRIP_ALWAYS
 
+# Generic single-word names that are too common to generate useful domain guesses
+GENERIC_SINGLE_WORDS = {
+    "salon", "bakery", "restaurant", "cafe", "hotel", "motel", "bar", "pub",
+    "shop", "store", "market", "pharmacy", "clinic", "dental", "auto",
+    "garage", "florist", "laundry", "cleaners", "barbershop", "gym", "spa",
+    "studio", "gallery", "boutique", "bistro", "diner", "pizzeria", "grill",
+    "tavern", "lounge", "inn", "lodge", "hostel", "nursery", "daycare",
+    "plumber", "electrician", "carpenter", "painter", "mechanic", "locksmith",
+    "tailor", "jeweler", "optician", "veterinary", "vet", "groomer",
+    "office", "warehouse", "factory", "workshop", "depot", "terminal",
+}
+
+
+def is_name_quality_for_domain_guess(name: str) -> bool:
+    """Check if a business name is specific enough to generate domain candidates.
+
+    Returns False for generic single-word names (e.g., 'Salon', 'Bakery')
+    that are unlikely to have matching domains.
+    """
+    if not name or not name.strip():
+        return False
+    words = [w for w in name.lower().strip().split() if w not in STRIP_ALWAYS]
+    if not words:
+        return False
+    # Single-word generic names are too vague
+    if len(words) == 1 and words[0] in GENERIC_SINGLE_WORDS:
+        return False
+    # Names that are just one or two characters are useless
+    clean = "".join(words)
+    if len(clean) <= 2:
+        return False
+    return True
+
 
 def _clean_business_name(
     name: str,
@@ -997,6 +1030,9 @@ def _process_one_business(
     Returns (found_url, candidates_checked, result_key).
     Runs entirely outside the DB session so it's safe for threads.
     """
+    if not is_name_quality_for_domain_guess(biz_name):
+        return (None, 0, "skipped_generic_name")
+
     candidates = _generate_candidates(biz_name, biz_country)
     if not candidates:
         return (None, 0, "no_candidates")

@@ -8,6 +8,7 @@ from typing import Any, Optional
 
 from .config import load_config
 from .pipeline import run_once
+from .retry import get_retryable_businesses, reset_for_retry
 from .workers.business_leads import ensure_daily_target_generated, score_businesses
 from .workers.domain_guess import run_batch as run_domain_guess
 from .workers.web_search_verify import run_batch as run_ddg_verify
@@ -297,6 +298,20 @@ class AutomationController:
                 self._verify_last_error = None
 
             try:
+                # --- Retry: Re-queue businesses with backoff-eligible errors ---
+                if not self._verify_stop_event.is_set():
+                    try:
+                        retryable = get_retryable_businesses(limit=50)
+                        if retryable:
+                            ids = [r["id"] for r in retryable]
+                            reset_count = reset_for_retry(ids)
+                            logger.info(
+                                "Verification: Re-queued %d businesses for retry (of %d eligible)",
+                                reset_count, len(retryable),
+                            )
+                    except Exception as e:
+                        logger.exception("Verification: Retry re-queue error: %s", e)
+
                 # --- Layer 1: Domain Guess (fastest, FREE) ---
                 if self._verify_stop_event.is_set():
                     break

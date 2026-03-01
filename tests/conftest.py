@@ -117,5 +117,7 @@ def city(db_session: Session) -> City:
 def client(monkeypatch):
     monkeypatch.setattr(api_module, "automation_controller", _AutomationStub(), raising=True)
     app = api_module.create_app()
+    # Disable rate limiting in tests
+    app.state.limiter.enabled = False
     with TestClient(app) as test_client:
         yield test_client

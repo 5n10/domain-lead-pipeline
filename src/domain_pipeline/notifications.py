@@ -1,7 +1,7 @@
-"""Push notifications via ntfy.sh.
+"""Push notifications via ntfy.sh and Slack.
 
-Completely FREE, no registration required. Just set NTFY_TOPIC in .env
-and install the ntfy app on your phone: https://ntfy.sh
+ntfy.sh: Completely FREE, no registration required. Just set NTFY_TOPIC in .env.
+Slack: Set SLACK_WEBHOOK_URL in .env to enable Slack notifications.
 
 Sends notifications for:
 - Pipeline completion with summary stats
@@ -20,16 +20,8 @@ from .config import load_config
 logger = logging.getLogger(__name__)
 
 
-def send_notification(
-    title: str,
-    message: str,
-    priority: str = "default",
-    tags: Optional[list[str]] = None,
-) -> bool:
-    """Send a push notification via ntfy.sh.
-
-    Returns True if sent, False if not configured or failed.
-    """
+def _send_ntfy(title: str, message: str, priority: str, tags: Optional[list[str]]) -> bool:
+    """Send via ntfy.sh."""
     config = load_config()
     if not config.ntfy_topic:
         return False
@@ -43,20 +35,53 @@ def send_notification(
         headers["Tags"] = ",".join(tags)
 
     try:
-        resp = requests.post(
-            url,
-            data=message.encode("utf-8"),
-            headers=headers,
-            timeout=10,
-        )
+        resp = requests.post(url, data=message.encode("utf-8"), headers=headers, timeout=10)
         if resp.ok:
-            logger.debug("Notification sent: %s", title)
+            logger.debug("ntfy notification sent: %s", title)
             return True
         logger.warning("ntfy returned %d: %s", resp.status_code, resp.text[:200])
         return False
     except requests.RequestException as exc:
         logger.warning("ntfy notification failed: %s", exc)
         return False
+
+
+def _send_slack(title: str, message: str) -> bool:
+    """Send via Slack incoming webhook."""
+    config = load_config()
+    webhook_url = getattr(config, "slack_webhook_url", None)
+    if not webhook_url:
+        return False
+
+    payload = {
+        "text": f"*{title}*\n{message}",
+    }
+
+    try:
+        resp = requests.post(webhook_url, json=payload, timeout=10)
+        if resp.ok:
+            logger.debug("Slack notification sent: %s", title)
+            return True
+        logger.warning("Slack returned %d: %s", resp.status_code, resp.text[:200])
+        return False
+    except requests.RequestException as exc:
+        logger.warning("Slack notification failed: %s", exc)
+        return False
+
+
+def send_notification(
+    title: str,
+    message: str,
+    priority: str = "default",
+    tags: Optional[list[str]] = None,
+) -> bool:
+    """Send a notification via all configured channels (ntfy.sh, Slack).
+
+    Returns True if at least one channel succeeded.
+    """
+    ntfy_ok = _send_ntfy(title, message, priority, tags)
+    slack_ok = _send_slack(title, message)
+    return ntfy_ok or slack_ok
 
 
 def notify_pipeline_complete(result: dict) -> bool:

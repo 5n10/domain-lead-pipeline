@@ -210,6 +210,16 @@ export default function ActionsView(props: Props) {
         </form>
       </div>
 
+      {/* Bulk Actions */}
+      <div>
+        <h3 className="text-sm font-semibold mb-3 text-text-secondary uppercase tracking-wider">Bulk Actions</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <ActionCard title="Run Deduplication" description="Find and mark duplicate businesses by name+proximity and shared contacts" cost="CPU-intensive" onClick={() => void wrap("Dedup", () => api.runDedup())} loading={actionLoading} buttonLabel="Find Duplicates" variant="purple" />
+          <ActionCard title="Bulk Score All" description="Score all unscored businesses (no limit)" cost="May take several minutes" onClick={() => void wrap("Bulk Score", () => api.scoreBusinesses({ limit: null, force_rescore: false }))} loading={actionLoading} buttonLabel="Score All" variant="blue" />
+          <ActionCard title="Bulk Rescore All" description="Force rescore every business (overwrites existing scores)" cost="May take 10+ minutes" onClick={() => void wrap("Bulk Rescore", () => api.scoreBusinesses({ limit: null, force_rescore: true }))} loading={actionLoading} buttonLabel="Rescore All" variant="red" />
+        </div>
+      </div>
+
       {/* Utility */}
       <div>
         <h3 className="text-sm font-semibold mb-3 text-text-secondary uppercase tracking-wider">Utilities</h3>

@@ -8,9 +8,12 @@ import ActionsView from "./components/ActionsView";
 import AutomationView from "./components/AutomationView";
 import JobsView from "./components/JobsView";
 import ExportsView from "./components/ExportsView";
+import DeadLetterView from "./components/DeadLetterView";
+import DuplicatesView from "./components/DuplicatesView";
+import BusinessDetailView from "./components/BusinessDetailView";
 import { useEffect } from "react";
 
-type View = "dashboard" | "leads" | "actions" | "automation" | "jobs" | "exports";
+type View = "dashboard" | "leads" | "actions" | "automation" | "jobs" | "exports" | "dead-letter" | "duplicates";
 
 const NAV_ITEMS: { key: View; label: string; icon: string }[] = [
   { key: "dashboard", label: "Dashboard", icon: "📊" },
@@ -19,6 +22,8 @@ const NAV_ITEMS: { key: View; label: string; icon: string }[] = [
   { key: "automation", label: "Automation", icon: "🔁" },
   { key: "jobs", label: "Jobs", icon: "📋" },
   { key: "exports", label: "Exports", icon: "📦" },
+  { key: "dead-letter", label: "Dead Letter", icon: "💀" },
+  { key: "duplicates", label: "Duplicates", icon: "🔀" },
 ];
 
 export default function App() {
@@ -34,6 +39,7 @@ export default function App() {
   const { data: exportFiles } = useQuery({ queryKey: ["exportFiles"], queryFn: api.exportFiles, refetchInterval: 30000 });
 
   const [filters, setFilters] = useState<LeadFilters>(defaultFilters);
+  const [selectedBusinessId, setSelectedBusinessId] = useState<string | null>(null);
 
   const { data: leads, error: leadsError } = useQuery({
     queryKey: ["leads", filters],
@@ -170,11 +176,18 @@ export default function App() {
         {/* View content */}
         <div className="flex-1 overflow-y-auto p-4 lg:p-6">
           {view === "dashboard" && <DashboardView metrics={metrics ?? null} automation={automation ?? null} />}
-          {view === "leads" && (
+          {view === "leads" && !selectedBusinessId && (
             <LeadsView
               leads={leads ?? null} metrics={metrics ?? null} filters={filters} categories={categories ?? []} cities={cities ?? []} loading={loading || actionLoading}
               onFiltersChange={setFilters}
               onApply={() => void queryClient.invalidateQueries({ queryKey: ["leads"] })}
+              onSelectBusiness={setSelectedBusinessId}
+            />
+          )}
+          {view === "leads" && selectedBusinessId && (
+            <BusinessDetailView
+              businessId={selectedBusinessId}
+              onBack={() => setSelectedBusinessId(null)}
             />
           )}
           {view === "actions" && (
@@ -206,6 +219,8 @@ export default function App() {
           )}
           {view === "jobs" && <JobsView jobs={jobs ?? []} />}
           {view === "exports" && <ExportsView files={exportFiles ?? []} />}
+          {view === "dead-letter" && <DeadLetterView />}
+          {view === "duplicates" && <DuplicatesView />}
         </div>
       </main>
     </div>

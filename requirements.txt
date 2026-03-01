@@ -13,3 +13,4 @@ google-auth>=2.0
 google-api-python-client>=2.0
 tenacity>=8.2
 redis>=5.0
+slowapi>=0.1.9

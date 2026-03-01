@@ -22,6 +22,7 @@ from typing import Optional
 import requests as http_requests
 from sqlalchemy import not_, or_, select
 
+from ..config import load_config
 from ..db import session_scope
 from ..jobs import complete_job, fail_job, start_job
 from ..models import Business, City
@@ -44,12 +45,17 @@ logger = logging.getLogger(__name__)
 
 JOB_NAME = "searxng_verify_websites"
 
-# Default SearXNG instance URL
-SEARXNG_URL = "http://localhost:8888/search"
+# Default SearXNG instance URL (overridden by SEARXNG_URL env var via config)
+SEARXNG_URL = load_config().searxng_url
 
 # Rate limiting
 DELAY_BETWEEN_SEARCHES = 0.3   # 300ms between SearXNG queries (local, so fast)
 DELAY_BETWEEN_BUSINESSES = 0.5  # 500ms between businesses
+
+# Fallback: reduce throughput after consecutive empty batches
+_consecutive_empty_batches = 0
+EMPTY_BATCH_THRESHOLD = 3       # Trigger fallback after this many consecutive empties
+FALLBACK_MULTIPLIER = 0.25      # Reduce batch to 25% during fallback
 
 
 def _search_searxng(
@@ -239,7 +245,17 @@ def run_batch(
     Returns:
         Dict with processing stats.
     """
+    global _consecutive_empty_batches
     effective_limit = limit if limit is not None else 200
+
+    # Fallback: reduce batch size if we've had consecutive empty results
+    if _consecutive_empty_batches >= EMPTY_BATCH_THRESHOLD:
+        reduced = max(int(effective_limit * FALLBACK_MULTIPLIER), 5)
+        logger.warning(
+            "SearXNG fallback active (%d consecutive empty batches), reducing batch %d -> %d",
+            _consecutive_empty_batches, effective_limit, reduced,
+        )
+        effective_limit = reduced
 
     with session_scope() as session:
         run = start_job(session, JOB_NAME, scope=scope)
@@ -358,6 +374,12 @@ def run_batch(
                 "%d confirmed no website, %d inconclusive",
                 processed, websites_found, no_website_confirmed, inconclusive,
             )
+
+            # Track consecutive empty batches for fallback rate reduction
+            if websites_found == 0 and processed > 0:
+                _consecutive_empty_batches += 1
+            elif websites_found > 0:
+                _consecutive_empty_batches = 0
 
             return {
                 "processed": processed,

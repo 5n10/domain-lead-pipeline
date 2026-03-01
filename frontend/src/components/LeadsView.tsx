@@ -41,6 +41,7 @@ type Props = {
   loading: boolean;
   onFiltersChange: (f: LeadFilters) => void;
   onApply: () => void;
+  onSelectBusiness?: (id: string) => void;
 };
 
 function ScoreBar({ score }: { score: number | null }) {
@@ -57,11 +58,17 @@ function ScoreBar({ score }: { score: number | null }) {
   );
 }
 
-function LeadRow({ lead }: { lead: BusinessLead }) {
+function LeadRow({ lead, onSelect }: { lead: BusinessLead; onSelect?: (id: string) => void }) {
   const domains = lead.verified_unhosted_domains.join(", ") || lead.unregistered_domains.join(", ") || lead.domains.join(", ");
   return (
     <tr className="hover:bg-amber-50/50 transition-colors">
-      <td className="px-3 py-2.5 text-sm max-w-[200px] truncate" title={lead.name ?? ""}>{lead.name || "-"}</td>
+      <td className="px-3 py-2.5 text-sm max-w-[200px] truncate" title={lead.name ?? ""}>
+        {onSelect ? (
+          <button onClick={() => onSelect(lead.id)} className="text-accent hover:underline text-left truncate">{lead.name || "-"}</button>
+        ) : (
+          lead.name || "-"
+        )}
+      </td>
       <td className="px-3 py-2.5 text-xs text-text-secondary">{lead.category || "-"}</td>
       <td className="px-3 py-2.5 text-xs">{lead.city || "-"}</td>
       <td className="px-3 py-2.5"><ScoreBar score={lead.lead_score} /></td>
@@ -77,7 +84,7 @@ function LeadRow({ lead }: { lead: BusinessLead }) {
   );
 }
 
-export default function LeadsView({ leads, metrics, filters, categories, cities, loading, onFiltersChange, onApply }: Props) {
+export default function LeadsView({ leads, metrics, filters, categories, cities, loading, onFiltersChange, onApply, onSelectBusiness }: Props) {
   const setF = (patch: Partial<LeadFilters>) => onFiltersChange({ ...filters, ...patch });
 
   return (
@@ -169,7 +176,7 @@ export default function LeadsView({ leads, metrics, filters, categories, cities,
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {leads?.items.map((lead) => <LeadRow key={lead.id} lead={lead} />)}
+              {leads?.items.map((lead) => <LeadRow key={lead.id} lead={lead} onSelect={onSelectBusiness} />)}
             </tbody>
           </table>
           {(!leads || leads.items.length === 0) && (

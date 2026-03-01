@@ -1,4 +1,4 @@
-import type { AutomationStatus, BusinessLeadResponse, ExportFile, JobRun, Metrics } from "./types";
+import type { AutomationStatus, BusinessLeadResponse, DeadLetterResponse, ExportFile, JobRun, Metrics } from "./types";
 
 const API_BASE =
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ??
@@ -161,5 +161,13 @@ export const api = {
   resetDDGVerification: () =>
     request<Record<string, unknown>>("/api/actions/reset-ddg-verification", {
       method: "POST"
+    }),
+  deadLetter: (limit = 200, offset = 0) =>
+    request<DeadLetterResponse>(`/api/dead-letter?limit=${limit}&offset=${offset}`),
+  businessDetail: (id: string) =>
+    request<Record<string, unknown>>(`/api/leads/business/${id}`),
+  runDedup: () =>
+    request<Record<string, unknown>>("/api/actions/run-dedup", {
+      method: "POST",
     }),
 };

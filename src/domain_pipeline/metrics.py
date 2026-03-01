@@ -10,8 +10,9 @@ from .models import (
     Domain,
     JobRun,
     OutreachExport,
+    VerificationQueueItem,
 )
-from .workers.business_leads import VERIFICATION_KEYS, compute_verification_confidence
+from .workers.business_leads import VERIFICATION_KEYS
 
 
 def collect_metrics() -> dict:
@@ -116,18 +117,30 @@ def collect_metrics() -> dict:
             )
         ).scalar() or 0)
 
-        # Confidence distribution — compute from raw JSONB for no-website businesses
-        # We compute this in Python since confidence is a derived field
-        confidence_sample = session.execute(
-            select(Business.raw).where(
+        # Confidence distribution — aggregate from denormalized column (set during scoring)
+        confidence_dist = {"high": 0, "medium": 0, "low": 0, "unverified": 0}
+        conf_rows = session.execute(
+            select(
+                func.coalesce(Business.verification_confidence, "unverified"),
+                func.count(Business.id),
+            )
+            .where(
                 or_(Business.website_url.is_(None), Business.website_url == ""),
                 Business.lead_score.isnot(None),
             )
-        ).scalars().all()
-        confidence_dist = {"high": 0, "medium": 0, "low": 0, "unverified": 0}
-        for raw_data in confidence_sample:
-            conf = compute_verification_confidence(raw_data)
-            confidence_dist[conf] = confidence_dist.get(conf, 0) + 1
+            .group_by(func.coalesce(Business.verification_confidence, "unverified"))
+        ).all()
+        for conf_level, cnt in conf_rows:
+            confidence_dist[conf_level] = int(cnt)
+
+        # Queue depth by layer and status
+        queue_rows = session.execute(
+            select(
+                VerificationQueueItem.layer,
+                VerificationQueueItem.status,
+                func.count(VerificationQueueItem.id),
+            ).group_by(VerificationQueueItem.layer, VerificationQueueItem.status)
+        ).all()
 
         recent_jobs = session.execute(
             select(JobRun.job_name, JobRun.status, JobRun.started_at, JobRun.finished_at, JobRun.processed_count)
@@ -180,6 +193,10 @@ def collect_metrics() -> dict:
             "searxng_no_results": searxng_no_results,
         },
         "confidence_distribution": confidence_dist,
+        "queue": {
+            layer: {status: count for _, status, count in queue_rows if _ == layer}
+            for layer in {row[0] for row in queue_rows}
+        } if queue_rows else {},
         "recent_jobs": [
             {
                 "job_name": job_name,
