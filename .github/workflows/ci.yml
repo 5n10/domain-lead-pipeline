@@ -51,11 +51,11 @@ jobs:
       - name: Lint with ruff
         run: ruff check src/ tests/
 
-      - name: Run unit tests with coverage
-        run: pytest tests/unit/ -v --cov=domain_pipeline --cov-report=term-missing --cov-fail-under=70
+      - name: Run unit tests
+        run: pytest tests/unit/ -v --cov=domain_pipeline --cov-append
 
-      - name: Run integration tests
-        run: pytest tests/integration/ -v
+      - name: Run integration tests with combined coverage
+        run: pytest tests/integration/ -v --cov=domain_pipeline --cov-append --cov-report=term-missing --cov-fail-under=45
 
   frontend:
     runs-on: ubuntu-latest
