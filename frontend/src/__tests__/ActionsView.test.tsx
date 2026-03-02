@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import ActionsView from "../components/ActionsView";
+import { ExportProvider } from "../contexts/ExportContext";
 
 const noop = () => {};
 const noopAsync = async () => {};
@@ -11,18 +12,12 @@ function renderActionsView(overrides: Partial<Parameters<typeof ActionsView>[0]>
     setActionLoading: noop as (v: boolean) => void,
     setStatusMessage: noop as (s: string) => void,
     refresh: noopAsync,
-    exportPlatform: "ghl",
-    setExportPlatform: noop as (v: string) => void,
-    exportMinScore: "40",
-    setExportMinScore: noop as (v: string) => void,
-    exportRequireContact: true,
-    setExportRequireContact: noop as (v: boolean) => void,
-    exportRequireUnhosted: false,
-    setExportRequireUnhosted: noop as (v: boolean) => void,
-    exportRequireDomainQualification: false,
-    setExportRequireDomainQualification: noop as (v: boolean) => void,
   };
-  return render(<ActionsView {...defaultProps} {...overrides} />);
+  return render(
+    <ExportProvider>
+      <ActionsView {...defaultProps} {...overrides} />
+    </ExportProvider>
+  );
 }
 
 describe("ActionsView", () => {

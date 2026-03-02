@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import type { AutomationStatus, VerificationSettings } from "../types";
 import { api } from "../api";
+import { useAutomationSettings } from "../contexts/AutomationContext";
+import { useExport } from "../contexts/ExportContext";
 
 function formatDate(value: string | null | undefined): string {
   if (!value) return "-";
@@ -18,18 +20,6 @@ type Props = {
   setActionLoading: (v: boolean) => void;
   setStatusMessage: (s: string) => void;
   refresh: () => Promise<void>;
-  // Settings state
-  autoArea: string; setAutoArea: (v: string) => void;
-  autoIntervalSeconds: string; setAutoIntervalSeconds: (v: string) => void;
-  autoSyncLimit: string; setAutoSyncLimit: (v: string) => void;
-  autoRdapLimit: string; setAutoRdapLimit: (v: string) => void;
-  autoBusinessScoreLimit: string; setAutoBusinessScoreLimit: (v: string) => void;
-  dailyTargetEnabled: boolean; setDailyTargetEnabled: (v: boolean) => void;
-  dailyTargetAllowRecycle: boolean; setDailyTargetAllowRecycle: (v: boolean) => void;
-  dailyTargetCount: string; setDailyTargetCount: (v: string) => void;
-  dailyTargetMinScore: string; setDailyTargetMinScore: (v: string) => void;
-  exportPlatform: string; exportMinScore: string; exportRequireContact: boolean;
-  exportRequireUnhosted: boolean; exportRequireDomainQualification: boolean;
 };
 
 // Verification layer stat row
@@ -61,6 +51,8 @@ function VerifyLayerRow({ label, icon, processed, websites, color }: {
 
 export default function AutomationView(p: Props) {
   const { automation, actionLoading, setActionLoading, setStatusMessage, refresh } = p;
+  const { autoArea, setAutoArea, autoIntervalSeconds, setAutoIntervalSeconds, autoSyncLimit, setAutoSyncLimit, autoRdapLimit, setAutoRdapLimit, autoBusinessScoreLimit, setAutoBusinessScoreLimit, dailyTargetEnabled, setDailyTargetEnabled, dailyTargetAllowRecycle, setDailyTargetAllowRecycle, dailyTargetCount, setDailyTargetCount, dailyTargetMinScore, setDailyTargetMinScore } = useAutomationSettings();
+  const { exportPlatform, exportMinScore, exportRequireContact, exportRequireUnhosted, exportRequireDomainQualification } = useExport();
 
   // Verification settings local state
   const v = automation?.verification;
@@ -101,27 +93,27 @@ export default function AutomationView(p: Props) {
 
   function buildPayload() {
     return {
-      interval_seconds: Number(p.autoIntervalSeconds),
-      area: p.autoArea.trim() || null,
+      interval_seconds: Number(autoIntervalSeconds),
+      area: autoArea.trim() || null,
       categories: "all",
-      sync_limit: Number(p.autoSyncLimit),
-      rdap_limit: Number(p.autoRdapLimit),
+      sync_limit: Number(autoSyncLimit),
+      rdap_limit: Number(autoRdapLimit),
       rdap_statuses: ["new", "skipped", "rdap_error", "dns_error"],
       email_limit: 0, score_limit: 0,
-      business_score_limit: Number(p.autoBusinessScoreLimit),
-      business_platform: p.exportPlatform,
-      business_min_score: Number(p.exportMinScore),
-      business_require_contact: p.exportRequireContact,
-      business_require_unhosted_domain: p.exportRequireUnhosted,
-      business_require_domain_qualification: p.exportRequireDomainQualification,
-      daily_target_enabled: p.dailyTargetEnabled,
-      daily_target_allow_recycle: p.dailyTargetAllowRecycle,
-      daily_target_count: Number(p.dailyTargetCount),
-      daily_target_min_score: Number(p.dailyTargetMinScore),
+      business_score_limit: Number(autoBusinessScoreLimit),
+      business_platform: exportPlatform,
+      business_min_score: Number(exportMinScore),
+      business_require_contact: exportRequireContact,
+      business_require_unhosted_domain: exportRequireUnhosted,
+      business_require_domain_qualification: exportRequireDomainQualification,
+      daily_target_enabled: dailyTargetEnabled,
+      daily_target_allow_recycle: dailyTargetAllowRecycle,
+      daily_target_count: Number(dailyTargetCount),
+      daily_target_min_score: Number(dailyTargetMinScore),
       daily_target_platform_prefix: "daily",
-      daily_target_require_contact: p.exportRequireContact,
-      daily_target_require_domain_qualification: p.exportRequireDomainQualification,
-      daily_target_require_unhosted_domain: p.exportRequireUnhosted,
+      daily_target_require_contact: exportRequireContact,
+      daily_target_require_domain_qualification: exportRequireDomainQualification,
+      daily_target_require_unhosted_domain: exportRequireUnhosted,
     };
   }
 
@@ -332,19 +324,19 @@ export default function AutomationView(p: Props) {
       <div className="bg-bg-card rounded-xl border border-border p-5 space-y-4">
         <h3 className="font-semibold text-sm">Pipeline Settings</h3>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <label className="text-xs text-text-secondary">Interval (sec)<input type="number" min={30} className="mt-1 w-full rounded-lg border border-border px-3 py-1.5 text-sm font-mono" value={p.autoIntervalSeconds} onChange={(e) => p.setAutoIntervalSeconds(e.target.value)} /></label>
-          <label className="text-xs text-text-secondary">Sync limit<input type="number" className="mt-1 w-full rounded-lg border border-border px-3 py-1.5 text-sm font-mono" value={p.autoSyncLimit} onChange={(e) => p.setAutoSyncLimit(e.target.value)} /></label>
-          <label className="text-xs text-text-secondary">RDAP limit<input type="number" className="mt-1 w-full rounded-lg border border-border px-3 py-1.5 text-sm font-mono" value={p.autoRdapLimit} onChange={(e) => p.setAutoRdapLimit(e.target.value)} /></label>
-          <label className="text-xs text-text-secondary">Score limit<input type="number" className="mt-1 w-full rounded-lg border border-border px-3 py-1.5 text-sm font-mono" value={p.autoBusinessScoreLimit} onChange={(e) => p.setAutoBusinessScoreLimit(e.target.value)} /></label>
+          <label className="text-xs text-text-secondary">Interval (sec)<input type="number" min={30} className="mt-1 w-full rounded-lg border border-border px-3 py-1.5 text-sm font-mono" value={autoIntervalSeconds} onChange={(e) => setAutoIntervalSeconds(e.target.value)} /></label>
+          <label className="text-xs text-text-secondary">Sync limit<input type="number" className="mt-1 w-full rounded-lg border border-border px-3 py-1.5 text-sm font-mono" value={autoSyncLimit} onChange={(e) => setAutoSyncLimit(e.target.value)} /></label>
+          <label className="text-xs text-text-secondary">RDAP limit<input type="number" className="mt-1 w-full rounded-lg border border-border px-3 py-1.5 text-sm font-mono" value={autoRdapLimit} onChange={(e) => setAutoRdapLimit(e.target.value)} /></label>
+          <label className="text-xs text-text-secondary">Score limit<input type="number" className="mt-1 w-full rounded-lg border border-border px-3 py-1.5 text-sm font-mono" value={autoBusinessScoreLimit} onChange={(e) => setAutoBusinessScoreLimit(e.target.value)} /></label>
         </div>
-        <label className="block text-xs text-text-secondary">Import area each cycle<input className="mt-1 w-full rounded-lg border border-border px-3 py-1.5 text-sm" value={p.autoArea} onChange={(e) => p.setAutoArea(e.target.value)} placeholder="e.g. Toronto, Canada" /></label>
+        <label className="block text-xs text-text-secondary">Import area each cycle<input className="mt-1 w-full rounded-lg border border-border px-3 py-1.5 text-sm" value={autoArea} onChange={(e) => setAutoArea(e.target.value)} placeholder="e.g. Toronto, Canada" /></label>
 
         <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider pt-2">Daily Target</h4>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <label className="flex items-center gap-2 text-xs text-text-secondary col-span-2 cursor-pointer"><input type="checkbox" className="rounded" checked={p.dailyTargetEnabled} onChange={(e) => p.setDailyTargetEnabled(e.target.checked)} /> Daily target enabled</label>
-          <label className="flex items-center gap-2 text-xs text-text-secondary col-span-2 cursor-pointer"><input type="checkbox" className="rounded" checked={p.dailyTargetAllowRecycle} onChange={(e) => p.setDailyTargetAllowRecycle(e.target.checked)} /> Allow lead recycle</label>
-          <label className="text-xs text-text-secondary">Count<input type="number" className="mt-1 w-full rounded-lg border border-border px-3 py-1.5 text-sm font-mono" value={p.dailyTargetCount} onChange={(e) => p.setDailyTargetCount(e.target.value)} /></label>
-          <label className="text-xs text-text-secondary">Min score<input type="number" className="mt-1 w-full rounded-lg border border-border px-3 py-1.5 text-sm font-mono" value={p.dailyTargetMinScore} onChange={(e) => p.setDailyTargetMinScore(e.target.value)} /></label>
+          <label className="flex items-center gap-2 text-xs text-text-secondary col-span-2 cursor-pointer"><input type="checkbox" className="rounded" checked={dailyTargetEnabled} onChange={(e) => setDailyTargetEnabled(e.target.checked)} /> Daily target enabled</label>
+          <label className="flex items-center gap-2 text-xs text-text-secondary col-span-2 cursor-pointer"><input type="checkbox" className="rounded" checked={dailyTargetAllowRecycle} onChange={(e) => setDailyTargetAllowRecycle(e.target.checked)} /> Allow lead recycle</label>
+          <label className="text-xs text-text-secondary">Count<input type="number" className="mt-1 w-full rounded-lg border border-border px-3 py-1.5 text-sm font-mono" value={dailyTargetCount} onChange={(e) => setDailyTargetCount(e.target.value)} /></label>
+          <label className="text-xs text-text-secondary">Min score<input type="number" className="mt-1 w-full rounded-lg border border-border px-3 py-1.5 text-sm font-mono" value={dailyTargetMinScore} onChange={(e) => setDailyTargetMinScore(e.target.value)} /></label>
         </div>
         <button onClick={() => void act("Save Settings", () => api.automationUpdateSettings(buildPayload()))} disabled={actionLoading} className="rounded-lg bg-accent text-white font-semibold py-2 px-6 text-sm hover:bg-accent-hover disabled:opacity-50">Save Pipeline Settings</button>
       </div>

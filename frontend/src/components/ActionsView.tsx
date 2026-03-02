@@ -1,21 +1,12 @@
 import { FormEvent, useState } from "react";
 import { api } from "../api";
+import { useExport } from "../contexts/ExportContext";
 
 type Props = {
   actionLoading: boolean;
   setActionLoading: (v: boolean) => void;
   setStatusMessage: (s: string) => void;
   refresh: () => Promise<void>;
-  exportPlatform: string;
-  setExportPlatform: (v: string) => void;
-  exportMinScore: string;
-  setExportMinScore: (v: string) => void;
-  exportRequireContact: boolean;
-  setExportRequireContact: (v: boolean) => void;
-  exportRequireUnhosted: boolean;
-  setExportRequireUnhosted: (v: boolean) => void;
-  exportRequireDomainQualification: boolean;
-  setExportRequireDomainQualification: (v: boolean) => void;
 };
 
 function ActionCard({ title, description, cost, onClick, loading, buttonLabel, variant }: {
@@ -56,6 +47,7 @@ function ActionCard({ title, description, cost, onClick, loading, buttonLabel, v
 
 export default function ActionsView(props: Props) {
   const { actionLoading, setActionLoading, setStatusMessage, refresh } = props;
+  const { exportPlatform, setExportPlatform, exportMinScore, setExportMinScore, exportRequireContact, setExportRequireContact, exportRequireUnhosted, setExportRequireUnhosted, exportRequireDomainQualification, setExportRequireDomainQualification } = useExport();
 
   const [pipelineArea, setPipelineArea] = useState("");
   const [pipelineSyncLimit, setPipelineSyncLimit] = useState("500");
@@ -87,11 +79,11 @@ export default function ActionsView(props: Props) {
         email_limit: null,
         score_limit: null,
         business_score_limit: Number(pipelineBusinessScoreLimit) || null,
-        business_min_score: Number(props.exportMinScore) || null,
-        business_platform: props.exportPlatform,
-        business_require_contact: props.exportRequireContact,
-        business_require_unhosted_domain: props.exportRequireUnhosted,
-        business_require_domain_qualification: props.exportRequireDomainQualification,
+        business_min_score: Number(exportMinScore) || null,
+        business_platform: exportPlatform,
+        business_require_contact: exportRequireContact,
+        business_require_unhosted_domain: exportRequireUnhosted,
+        business_require_domain_qualification: exportRequireDomainQualification,
       });
       setStatusMessage("Pipeline completed");
       await refresh();
@@ -115,11 +107,11 @@ export default function ActionsView(props: Props) {
     setActionLoading(true);
     try {
       const r = await api.exportBusinesses({
-        platform: props.exportPlatform,
-        min_score: Number(props.exportMinScore),
-        require_contact: props.exportRequireContact,
-        require_unhosted_domain: props.exportRequireUnhosted,
-        require_domain_qualification: props.exportRequireDomainQualification,
+        platform: exportPlatform,
+        min_score: Number(exportMinScore),
+        require_contact: exportRequireContact,
+        require_unhosted_domain: exportRequireUnhosted,
+        require_domain_qualification: exportRequireDomainQualification,
       });
       setStatusMessage(r.path ? `Export created: ${r.path}` : "No rows exported");
       await refresh();
@@ -189,17 +181,17 @@ export default function ActionsView(props: Props) {
           <h3 className="font-semibold text-sm">Export Businesses</h3>
           <label className="block text-xs text-text-secondary">
             Platform
-            <input className="mt-1 w-full rounded-lg border border-border px-3 py-1.5 text-sm" value={props.exportPlatform} onChange={(e) => props.setExportPlatform(e.target.value)} />
+            <input className="mt-1 w-full rounded-lg border border-border px-3 py-1.5 text-sm" value={exportPlatform} onChange={(e) => setExportPlatform(e.target.value)} />
           </label>
           <label className="block text-xs text-text-secondary">
             Min Score
-            <input type="number" className="mt-1 w-full rounded-lg border border-border px-3 py-1.5 text-sm font-mono" value={props.exportMinScore} onChange={(e) => props.setExportMinScore(e.target.value)} />
+            <input type="number" className="mt-1 w-full rounded-lg border border-border px-3 py-1.5 text-sm font-mono" value={exportMinScore} onChange={(e) => setExportMinScore(e.target.value)} />
           </label>
           <div className="space-y-1">
             {[
-              { val: props.exportRequireContact, set: props.setExportRequireContact, label: "Require contact" },
-              { val: props.exportRequireUnhosted, set: props.setExportRequireUnhosted, label: "Require unhosted domain" },
-              { val: props.exportRequireDomainQualification, set: props.setExportRequireDomainQualification, label: "Require domain qualification" },
+              { val: exportRequireContact, set: setExportRequireContact, label: "Require contact" },
+              { val: exportRequireUnhosted, set: setExportRequireUnhosted, label: "Require unhosted domain" },
+              { val: exportRequireDomainQualification, set: setExportRequireDomainQualification, label: "Require domain qualification" },
             ].map(({ val, set, label }) => (
               <label key={label} className="flex items-center gap-2 text-xs text-text-secondary cursor-pointer">
                 <input type="checkbox" className="rounded" checked={val} onChange={(e) => set(e.target.checked)} />{label}
@@ -224,7 +216,7 @@ export default function ActionsView(props: Props) {
       <div>
         <h3 className="text-sm font-semibold mb-3 text-text-secondary uppercase tracking-wider">Utilities</h3>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <ActionCard title="Export to Sheets" description="Export leads to Google Sheets" cost="Service account required" onClick={() => void wrap("Sheets", () => api.exportGoogleSheets({ min_score: Number(props.exportMinScore) || null, require_contact: props.exportRequireContact }))} loading={actionLoading} buttonLabel="Export" variant="green" />
+          <ActionCard title="Export to Sheets" description="Export leads to Google Sheets" cost="Service account required" onClick={() => void wrap("Sheets", () => api.exportGoogleSheets({ min_score: Number(exportMinScore) || null, require_contact: exportRequireContact }))} loading={actionLoading} buttonLabel="Export" variant="green" />
           <ActionCard title="Test Notification" description="Send a test push notification" cost="NTFY_TOPIC required" onClick={() => void wrap("Notification", () => api.testNotification({}))} loading={actionLoading} buttonLabel="Send" variant="default" />
           <ActionCard title="Reset DDG Data" description="Clear broken DDG verification data and rescore all" cost="One-time fix" onClick={() => void wrap("Reset DDG", () => api.resetDDGVerification())} loading={actionLoading} buttonLabel="Reset" variant="red" />
         </div>

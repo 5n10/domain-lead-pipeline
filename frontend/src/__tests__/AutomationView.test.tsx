@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import AutomationView from "../components/AutomationView";
+import { ExportProvider } from "../contexts/ExportContext";
+import { AutomationSettingsProvider } from "../contexts/AutomationContext";
 import type { AutomationStatus } from "../types";
 
 const noop = () => {};
@@ -66,38 +68,22 @@ const mockAutomation: AutomationStatus = {
 };
 
 function renderAutomationView(overrides: { automation?: AutomationStatus | null } = {}) {
+  const automation = overrides.automation !== undefined ? overrides.automation : mockAutomation;
   const defaultProps = {
-    automation: mockAutomation,
+    automation,
     setAutomation: noop as (s: AutomationStatus) => void,
     actionLoading: false,
     setActionLoading: noop as (v: boolean) => void,
     setStatusMessage: noop as (s: string) => void,
     refresh: noopAsync,
-    autoArea: "",
-    setAutoArea: noop as (v: string) => void,
-    autoIntervalSeconds: "900",
-    setAutoIntervalSeconds: noop as (v: string) => void,
-    autoSyncLimit: "500",
-    setAutoSyncLimit: noop as (v: string) => void,
-    autoRdapLimit: "100",
-    setAutoRdapLimit: noop as (v: string) => void,
-    autoBusinessScoreLimit: "2000",
-    setAutoBusinessScoreLimit: noop as (v: string) => void,
-    dailyTargetEnabled: true,
-    setDailyTargetEnabled: noop as (v: boolean) => void,
-    dailyTargetAllowRecycle: true,
-    setDailyTargetAllowRecycle: noop as (v: boolean) => void,
-    dailyTargetCount: "100",
-    setDailyTargetCount: noop as (v: string) => void,
-    dailyTargetMinScore: "40",
-    setDailyTargetMinScore: noop as (v: string) => void,
-    exportPlatform: "ghl",
-    exportMinScore: "40",
-    exportRequireContact: true,
-    exportRequireUnhosted: false,
-    exportRequireDomainQualification: false,
   };
-  return render(<AutomationView {...defaultProps} {...overrides} />);
+  return render(
+    <ExportProvider>
+      <AutomationSettingsProvider automation={automation}>
+        <AutomationView {...defaultProps} />
+      </AutomationSettingsProvider>
+    </ExportProvider>
+  );
 }
 
 describe("AutomationView", () => {
@@ -108,7 +94,6 @@ describe("AutomationView", () => {
 
   it("shows Start button when verification is not running", () => {
     renderAutomationView();
-    // The verification section should show "Start" when verification.running is false
     const startButtons = screen.getAllByText("Start");
     expect(startButtons.length).toBeGreaterThanOrEqual(1);
   });
@@ -122,7 +107,6 @@ describe("AutomationView", () => {
       },
     };
     renderAutomationView({ automation: runningAutomation });
-    // When verification is running, the continuous verification section shows "Stop"
     const stopButtons = screen.getAllByText("Stop");
     expect(stopButtons.length).toBeGreaterThanOrEqual(1);
   });
@@ -136,7 +120,6 @@ describe("AutomationView", () => {
 
   it("shows run count", () => {
     renderAutomationView();
-    // Run count is displayed as "Runs: 5"
     expect(screen.getByText(/Runs: 5/)).toBeInTheDocument();
   });
 
