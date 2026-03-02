@@ -26,7 +26,10 @@ from ..config import load_config
 from ..db import session_scope
 from ..domain_utils import normalize_domain
 from ..jobs import complete_job, fail_job, start_job
+from ..circuit_breaker import get_breaker
 from ..models import Business, BusinessContact, City
+
+_cb = get_breaker("google_places", failure_threshold=5, recovery_timeout=120)
 
 logger = logging.getLogger(__name__)
 

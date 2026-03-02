@@ -51,8 +51,8 @@ jobs:
       - name: Lint with ruff
         run: ruff check src/ tests/
 
-      - name: Run unit tests
-        run: pytest tests/unit/ -v
+      - name: Run unit tests with coverage
+        run: pytest tests/unit/ -v --cov=domain_pipeline --cov-report=term-missing --cov-fail-under=70
 
       - name: Run integration tests
         run: pytest tests/integration/ -v
@@ -77,6 +77,9 @@ jobs:
 
       - name: Type check
         run: npx tsc --noEmit
+
+      - name: Test with coverage
+        run: npx vitest run --coverage
 
       - name: Build
         run: npx vite build

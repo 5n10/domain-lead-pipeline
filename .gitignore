@@ -22,5 +22,9 @@ frontend/dist/
 frontend/*.tsbuildinfo
 frontend/vite.config.js
 frontend/vite.config.d.ts
+# Coverage
+.coverage
+htmlcov/
+frontend/coverage/
 # Junk files from pip install typos
 =*

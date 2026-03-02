@@ -120,3 +120,29 @@ def test_mutation_endpoints_require_api_key_when_local_bypass_disabled(client, m
     authorized = client.post("/api/actions/business-score", json={"limit": 1}, headers={"X-API-Key": "test-secret"})
     assert authorized.status_code == 200
     assert authorized.json() == {"processed": 0}
+
+
+def test_mutation_default_bypass_is_off(client, monkeypatch):
+    """Verify that the default config has localhost bypass disabled (security fix)."""
+    # Clear the env var so we get the default value
+    monkeypatch.delenv("MUTATION_LOCALHOST_BYPASS", raising=False)
+    monkeypatch.setenv("MUTATION_API_KEY", "test-secret")
+
+    from domain_pipeline.config_manager import reload_config
+    config = reload_config()
+
+    # The default should be False (secure by default)
+    assert config.mutation_localhost_bypass is False
+
+
+def test_mutation_bypass_allows_localhost_when_enabled(client, monkeypatch):
+    """Verify that localhost bypass works when explicitly enabled."""
+    monkeypatch.setenv("MUTATION_LOCALHOST_BYPASS", "true")
+    monkeypatch.setenv("MUTATION_API_KEY", "test-secret")
+
+    from domain_pipeline.config_manager import reload_config
+    reload_config()
+
+    # TestClient connects from localhost, so this should succeed without API key
+    resp = client.post("/api/actions/business-score", json={"limit": 1})
+    assert resp.status_code == 200

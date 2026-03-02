@@ -195,20 +195,20 @@ def _validate_file_path(file_path: str, param_name: str) -> None:
 
 class PipelineRunRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    area: Optional[str] = Field(None, max_length=100)
-    categories: str = Field("all", max_length=500)
+    area: Optional[str] = Field(None, max_length=100, examples=["toronto"])
+    categories: str = Field("all", max_length=500, examples=["trades", "all"])
     areas_file: str = Field("config/areas.json", max_length=100, pattern=r"^config/[a-zA-Z0-9_-]+\.json$")
     categories_file: str = Field("config/categories.json", max_length=100, pattern=r"^config/[a-zA-Z0-9_-]+\.json$")
-    sync_limit: Optional[int] = Field(None, ge=1, le=10000)
-    rdap_limit: Optional[int] = Field(None, ge=1, le=10000)
+    sync_limit: Optional[int] = Field(None, ge=1, le=10000, examples=[500])
+    rdap_limit: Optional[int] = Field(None, ge=1, le=10000, examples=[200])
     rdap_statuses: Optional[list[str]] = None
-    email_limit: Optional[int] = Field(None, ge=1, le=10000)
-    score_limit: Optional[int] = Field(None, ge=1, le=10000)
-    min_score: Optional[float] = Field(None, ge=0.0)
+    email_limit: Optional[int] = Field(None, ge=1, le=10000, examples=[100])
+    score_limit: Optional[int] = Field(None, ge=1, le=10000, examples=[1000])
+    min_score: Optional[float] = Field(None, ge=0.0, examples=[30.0])
     platform: str = Field("csv", max_length=50)
-    business_score_limit: Optional[int] = Field(None, ge=1, le=10000)
+    business_score_limit: Optional[int] = Field(None, ge=1, le=10000, examples=[500])
     business_platform: str = Field("csv_business", max_length=50)
-    business_min_score: Optional[float] = Field(None, ge=0.0)
+    business_min_score: Optional[float] = Field(None, ge=0.0, examples=[40.0])
     business_require_unhosted_domain: bool = False
     business_require_contact: bool = True
     business_require_domain_qualification: bool = True
@@ -216,16 +216,16 @@ class PipelineRunRequest(BaseModel):
 
 class BusinessScoreRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    limit: Optional[int] = Field(None, ge=1, le=100000)
-    scope: Optional[str] = Field(None, max_length=50)
+    limit: Optional[int] = Field(None, ge=1, le=100000, examples=[1000])
+    scope: Optional[str] = Field(None, max_length=50, examples=["unscored"])
     force_rescore: bool = False
 
 
 class BusinessExportRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    platform: str = Field("csv_business", max_length=50)
-    min_score: Optional[float] = Field(None, ge=0.0)
-    limit: Optional[int] = Field(None, ge=1, le=10000)
+    platform: str = Field("csv_business", max_length=50, examples=["csv_business"])
+    min_score: Optional[float] = Field(None, ge=0.0, examples=[40.0])
+    limit: Optional[int] = Field(None, ge=1, le=10000, examples=[500])
     require_contact: bool = True
     require_unhosted_domain: bool = False
     require_domain_qualification: bool = True
@@ -234,76 +234,76 @@ class BusinessExportRequest(BaseModel):
 
 class GooglePlacesEnrichRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    limit: Optional[int] = Field(None, ge=1, le=1000)
-    priority: str = Field("no_contacts", max_length=20)
+    limit: Optional[int] = Field(None, ge=1, le=1000, examples=[50])
+    priority: str = Field("no_contacts", max_length=20, examples=["no_contacts", "high_score"])
     rescore: bool = True
 
 
 class GooglePlacesVerifyRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    limit: Optional[int] = Field(None, ge=1, le=1000)
-    min_score: float = Field(30.0, ge=0.0)
+    limit: Optional[int] = Field(None, ge=1, le=1000, examples=[100])
+    min_score: float = Field(30.0, ge=0.0, examples=[30.0])
     rescore: bool = True
 
 
 class DomainGuessRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    limit: Optional[int] = Field(None, ge=1, le=1000)
-    min_score: float = Field(0.0, ge=0.0)
+    limit: Optional[int] = Field(None, ge=1, le=1000, examples=[500])
+    min_score: float = Field(0.0, ge=0.0, examples=[0.0])
     rescore: bool = True
 
 
 class DDGVerifyRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    limit: Optional[int] = Field(None, ge=1, le=1000)
-    min_score: float = Field(30.0, ge=0.0)
+    limit: Optional[int] = Field(None, ge=1, le=1000, examples=[100])
+    min_score: float = Field(30.0, ge=0.0, examples=[30.0])
     rescore: bool = True
 
 
 class LLMVerifyRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    limit: Optional[int] = Field(None, ge=1, le=1000)
-    min_score: float = Field(30.0, ge=0.0)
+    limit: Optional[int] = Field(None, ge=1, le=1000, examples=[50])
+    min_score: float = Field(30.0, ge=0.0, examples=[30.0])
     rescore: bool = True
 
 
 class GoogleSearchVerifyRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    limit: Optional[int] = Field(None, ge=1, le=1000)
-    min_score: float = Field(30.0, ge=0.0)
+    limit: Optional[int] = Field(None, ge=1, le=1000, examples=[50])
+    min_score: float = Field(30.0, ge=0.0, examples=[30.0])
     rescore: bool = True
 
 
 class SearXNGVerifyRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    limit: Optional[int] = Field(None, ge=1, le=2000)
-    min_score: float = Field(0.0, ge=0.0)
+    limit: Optional[int] = Field(None, ge=1, le=2000, examples=[200])
+    min_score: float = Field(0.0, ge=0.0, examples=[0.0])
     rescore: bool = True
 
 
 class FoursquareEnrichRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    limit: Optional[int] = Field(None, ge=1, le=1000)
-    priority: str = Field("no_contacts", max_length=20)
+    limit: Optional[int] = Field(None, ge=1, le=1000, examples=[50])
+    priority: str = Field("no_contacts", max_length=20, examples=["no_contacts", "high_score"])
     rescore: bool = True
 
 
 class FoursquareVerifyRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    limit: Optional[int] = Field(None, ge=1, le=1000)
-    min_score: float = Field(30.0, ge=0.0)
+    limit: Optional[int] = Field(None, ge=1, le=1000, examples=[100])
+    min_score: float = Field(30.0, ge=0.0, examples=[30.0])
     rescore: bool = True
 
 
 class HunterEnrichRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    limit: Optional[int] = Field(None, ge=1, le=100)
+    limit: Optional[int] = Field(None, ge=1, le=100, examples=[25])
 
 
 class SheetsExportRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    min_score: Optional[float] = Field(None, ge=0.0)
-    limit: Optional[int] = Field(None, ge=1, le=10000)
+    min_score: Optional[float] = Field(None, ge=0.0, examples=[40.0])
+    limit: Optional[int] = Field(None, ge=1, le=10000, examples=[200])
     require_contact: bool = True
     require_unhosted_domain: bool = False
     require_domain_qualification: bool = True
@@ -311,15 +311,15 @@ class SheetsExportRequest(BaseModel):
 
 class TestNotificationRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    title: str = Field("Test Notification", max_length=100)
-    message: str = Field("Domain Lead Pipeline test notification", max_length=500)
+    title: str = Field("Test Notification", max_length=100, examples=["Test Notification"])
+    message: str = Field("Domain Lead Pipeline test notification", max_length=500, examples=["Pipeline is working!"])
 
 
 class AutomationSettingsRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    interval_seconds: Optional[int] = Field(None, ge=60, le=86400)
-    area: Optional[str] = Field(None, max_length=100)
-    categories: Optional[str] = Field(None, max_length=500)
+    interval_seconds: Optional[int] = Field(None, ge=60, le=86400, examples=[3600])
+    area: Optional[str] = Field(None, max_length=100, examples=["toronto"])
+    categories: Optional[str] = Field(None, max_length=500, examples=["trades"])
     areas_file: Optional[str] = Field(None, max_length=100, pattern=r"^config/[a-zA-Z0-9_-]+\.json$")
     categories_file: Optional[str] = Field(None, max_length=100, pattern=r"^config/[a-zA-Z0-9_-]+\.json$")
     sync_limit: Optional[int] = Field(None, ge=1, le=10000)
@@ -347,19 +347,19 @@ class AutomationSettingsRequest(BaseModel):
 
 class VerificationSettingsRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    domain_guess_batch: Optional[int] = Field(None, ge=1, le=5000)
-    domain_guess_min_score: Optional[float] = Field(None, ge=0.0)
-    searxng_batch: Optional[int] = Field(None, ge=1, le=2000)
-    searxng_min_score: Optional[float] = Field(None, ge=0.0)
-    ddg_batch: Optional[int] = Field(None, ge=1, le=1000)
-    ddg_min_score: Optional[float] = Field(None, ge=0.0)
-    llm_batch: Optional[int] = Field(None, ge=1, le=500)
-    llm_min_score: Optional[float] = Field(None, ge=0.0)
-    google_search_batch: Optional[int] = Field(None, ge=1, le=500)
-    google_search_min_score: Optional[float] = Field(None, ge=0.0)
+    domain_guess_batch: Optional[int] = Field(None, ge=1, le=5000, examples=[500])
+    domain_guess_min_score: Optional[float] = Field(None, ge=0.0, examples=[0.0])
+    searxng_batch: Optional[int] = Field(None, ge=1, le=2000, examples=[200])
+    searxng_min_score: Optional[float] = Field(None, ge=0.0, examples=[0.0])
+    ddg_batch: Optional[int] = Field(None, ge=1, le=1000, examples=[100])
+    ddg_min_score: Optional[float] = Field(None, ge=0.0, examples=[30.0])
+    llm_batch: Optional[int] = Field(None, ge=1, le=500, examples=[50])
+    llm_min_score: Optional[float] = Field(None, ge=0.0, examples=[30.0])
+    google_search_batch: Optional[int] = Field(None, ge=1, le=500, examples=[50])
+    google_search_min_score: Optional[float] = Field(None, ge=0.0, examples=[30.0])
     rescore_after_batch: Optional[bool] = None
-    pause_between_batches: Optional[int] = Field(None, ge=1, le=300)
-    pause_when_idle: Optional[int] = Field(None, ge=10, le=3600)
+    pause_between_batches: Optional[int] = Field(None, ge=1, le=300, examples=[5])
+    pause_when_idle: Optional[int] = Field(None, ge=10, le=3600, examples=[60])
 
 
 automation_controller = AutomationController()
@@ -389,7 +389,22 @@ def create_app() -> FastAPI:
             automation_controller.stop_verification()
             automation_controller.stop()
 
-    app = FastAPI(title="Domain Lead Pipeline API", version="0.1.0", lifespan=lifespan)
+    openapi_tags = [
+        {"name": "Health", "description": "Service health and dependency checks"},
+        {"name": "Metrics", "description": "Pipeline metrics and job history"},
+        {"name": "Leads", "description": "Browse and filter scored business leads"},
+        {"name": "Actions", "description": "Trigger pipeline, scoring, verification, enrichment, and export operations"},
+        {"name": "Automation", "description": "Start/stop automation loops and update settings"},
+        {"name": "Exports", "description": "List and download exported CSV files"},
+        {"name": "Admin", "description": "Dead-letter queue, duplicate management"},
+    ]
+    app = FastAPI(
+        title="Domain Lead Pipeline API",
+        version="3.0.0",
+        description="Discovers local businesses without websites and scores them as domain-sale leads.",
+        openapi_tags=openapi_tags,
+        lifespan=lifespan,
+    )
 
     # Rate limiting
     app.state.limiter = limiter
@@ -409,7 +424,7 @@ def create_app() -> FastAPI:
         allow_headers=["Content-Type", "Authorization", "X-API-Key"],
     )
 
-    @app.get("/health")
+    @app.get("/health", tags=["Health"], summary="Service health check")
     def health() -> dict:
         checks: dict = {}
         overall = "ok"
@@ -449,18 +464,22 @@ def create_app() -> FastAPI:
         }
         checks["api_keys"] = api_keys
 
+        # 4. Circuit breaker states
+        from .circuit_breaker import all_breaker_statuses
+        checks["circuit_breakers"] = all_breaker_statuses()
+
         return {
             "status": overall,
             "pool": pool_stats(),
             "checks": checks,
         }
 
-    @app.get("/api/metrics")
+    @app.get("/api/metrics", tags=["Metrics"], summary="Pipeline metrics snapshot")
     @limiter.limit("30/minute")
     def api_metrics(request: Request) -> dict:
         return collect_metrics()
 
-    @app.get("/api/jobs")
+    @app.get("/api/jobs", tags=["Metrics"], summary="List recent job runs")
     def api_jobs(limit: int = Query(default=50, ge=1, le=500)) -> list[dict]:
         with session_scope() as session:
             rows = session.execute(
@@ -481,7 +500,7 @@ def create_app() -> FastAPI:
             for row in rows
         ]
 
-    @app.get("/api/leads/business")
+    @app.get("/api/leads/business", tags=["Leads"], summary="List scored business leads")
     def api_business_leads(
         min_score: Optional[float] = Query(default=None),
         category: Optional[str] = Query(default=None),
@@ -611,7 +630,7 @@ def create_app() -> FastAPI:
                 "items": items,
             }
 
-    @app.get("/api/leads/business/categories")
+    @app.get("/api/leads/business/categories", tags=["Leads"], summary="List distinct business categories")
     def api_business_categories() -> list[str]:
         with session_scope() as session:
             rows = session.execute(
@@ -622,7 +641,7 @@ def create_app() -> FastAPI:
             ).scalars().all()
         return [row for row in rows if row]
 
-    @app.get("/api/leads/business/cities")
+    @app.get("/api/leads/business/cities", tags=["Leads"], summary="List distinct city names")
     def api_business_cities(limit: int = Query(default=200, ge=1, le=2000)) -> list[str]:
         with session_scope() as session:
             rows = session.execute(
@@ -634,7 +653,7 @@ def create_app() -> FastAPI:
             ).scalars().all()
         return [row for row in rows if row]
 
-    @app.get("/api/leads/business/{business_id}")
+    @app.get("/api/leads/business/{business_id}", tags=["Leads"], summary="Get business detail")
     def api_business_detail(business_id: str) -> dict:
         """Get full detail for a single business including verification history."""
         import uuid as _uuid
@@ -721,7 +740,7 @@ def create_app() -> FastAPI:
                 "raw": business.raw,
             }
 
-    @app.post("/api/actions/pipeline-run", dependencies=[Depends(require_mutation_auth)])
+    @app.post("/api/actions/pipeline-run", tags=["Actions"], summary="Run full pipeline", dependencies=[Depends(require_mutation_auth)])
     @limiter.limit("5/minute")
     def api_run_pipeline(request: Request, payload: PipelineRunRequest) -> dict:
         # Validate file paths to prevent directory traversal
@@ -753,7 +772,7 @@ def create_app() -> FastAPI:
         finally:
             automation_controller._run_lock.release()
 
-    @app.post("/api/actions/business-score", dependencies=[Depends(require_mutation_auth)])
+    @app.post("/api/actions/business-score", tags=["Actions"], summary="Score businesses", dependencies=[Depends(require_mutation_auth)])
     @limiter.limit("10/minute")
     def api_score_businesses(request: Request, payload: BusinessScoreRequest) -> dict:
         processed = score_businesses(
@@ -763,7 +782,7 @@ def create_app() -> FastAPI:
         )
         return {"processed": processed}
 
-    @app.post("/api/actions/validate-domains", dependencies=[Depends(require_mutation_auth)])
+    @app.post("/api/actions/validate-domains", tags=["Actions"], summary="Validate domains via RDAP", dependencies=[Depends(require_mutation_auth)])
     @limiter.limit("5/minute")
     def api_validate_domains(
         request: Request,
@@ -794,7 +813,7 @@ def create_app() -> FastAPI:
             "rescored": scored,
         }
 
-    @app.post("/api/actions/enrich-google-places", dependencies=[Depends(require_mutation_auth)])
+    @app.post("/api/actions/enrich-google-places", tags=["Actions"], summary="Enrich via Google Places", dependencies=[Depends(require_mutation_auth)])
     @limiter.limit("10/minute")
     def api_enrich_google_places(request: Request, payload: GooglePlacesEnrichRequest) -> dict:
         """Enrich businesses with Google Places data (phone, website, rating).
@@ -812,7 +831,7 @@ def create_app() -> FastAPI:
             result["rescored"] = rescored
         return result
 
-    @app.post("/api/actions/verify-websites", dependencies=[Depends(require_mutation_auth)])
+    @app.post("/api/actions/verify-websites", tags=["Actions"], summary="Verify websites via Google Places", dependencies=[Depends(require_mutation_auth)])
     @limiter.limit("10/minute")
     def api_verify_websites(request: Request, payload: GooglePlacesVerifyRequest) -> dict:
         """Verify whether potential leads actually have websites via Google Places.
@@ -832,7 +851,7 @@ def create_app() -> FastAPI:
             result["rescored"] = rescored
         return result
 
-    @app.post("/api/actions/domain-guess", dependencies=[Depends(require_mutation_auth)])
+    @app.post("/api/actions/domain-guess", tags=["Actions"], summary="Guess domains from business names", dependencies=[Depends(require_mutation_auth)])
     @limiter.limit("10/minute")
     def api_domain_guess(request: Request, payload: DomainGuessRequest) -> dict:
         """Guess domains from business names and check via HTTP HEAD.
@@ -850,7 +869,7 @@ def create_app() -> FastAPI:
             result["rescored"] = rescored
         return result
 
-    @app.post("/api/actions/verify-websites-ddg", dependencies=[Depends(require_mutation_auth)])
+    @app.post("/api/actions/verify-websites-ddg", tags=["Actions"], summary="Verify websites via DuckDuckGo", dependencies=[Depends(require_mutation_auth)])
     @limiter.limit("10/minute")
     def api_verify_websites_ddg(request: Request, payload: DDGVerifyRequest) -> dict:
         """Verify whether leads have websites via DuckDuckGo search.
@@ -867,7 +886,7 @@ def create_app() -> FastAPI:
             result["rescored"] = rescored
         return result
 
-    @app.post("/api/actions/verify-websites-llm", dependencies=[Depends(require_mutation_auth)])
+    @app.post("/api/actions/verify-websites-llm", tags=["Actions"], summary="Verify websites via LLM", dependencies=[Depends(require_mutation_auth)])
     @limiter.limit("10/minute")
     def api_verify_websites_llm(request: Request, payload: LLMVerifyRequest) -> dict:
         """Verify whether leads have websites via an LLM.
@@ -884,7 +903,7 @@ def create_app() -> FastAPI:
             result["rescored"] = rescored
         return result
 
-    @app.post("/api/actions/verify-websites-google-search", dependencies=[Depends(require_mutation_auth)])
+    @app.post("/api/actions/verify-websites-google-search", tags=["Actions"], summary="Verify websites via Google Search", dependencies=[Depends(require_mutation_auth)])
     @limiter.limit("10/minute")
     def api_verify_websites_google_search(request: Request, payload: GoogleSearchVerifyRequest) -> dict:
         """Verify whether leads have websites via Google Search scraping.
@@ -904,7 +923,7 @@ def create_app() -> FastAPI:
             result["rescored"] = rescored
         return result
 
-    @app.post("/api/actions/verify-websites-searxng", dependencies=[Depends(require_mutation_auth)])
+    @app.post("/api/actions/verify-websites-searxng", tags=["Actions"], summary="Verify websites via SearXNG", dependencies=[Depends(require_mutation_auth)])
     @limiter.limit("10/minute")
     def api_verify_websites_searxng(request: Request, payload: SearXNGVerifyRequest) -> dict:
         """Verify whether leads have websites via SearXNG meta-search.
@@ -924,7 +943,7 @@ def create_app() -> FastAPI:
             result["rescored"] = rescored
         return result
 
-    @app.post("/api/actions/enrich-foursquare", dependencies=[Depends(require_mutation_auth)])
+    @app.post("/api/actions/enrich-foursquare", tags=["Actions"], summary="Enrich via Foursquare", dependencies=[Depends(require_mutation_auth)])
     @limiter.limit("10/minute")
     def api_enrich_foursquare(request: Request, payload: FoursquareEnrichRequest) -> dict:
         """Enrich businesses with Foursquare Places data (phone, website, rating).
@@ -940,7 +959,7 @@ def create_app() -> FastAPI:
             result["rescored"] = rescored
         return result
 
-    @app.post("/api/actions/verify-websites-foursquare", dependencies=[Depends(require_mutation_auth)])
+    @app.post("/api/actions/verify-websites-foursquare", tags=["Actions"], summary="Verify websites via Foursquare", dependencies=[Depends(require_mutation_auth)])
     @limiter.limit("10/minute")
     def api_verify_websites_foursquare(request: Request, payload: FoursquareVerifyRequest) -> dict:
         """Verify whether leads have websites via Foursquare Places API.
@@ -956,7 +975,7 @@ def create_app() -> FastAPI:
             result["rescored"] = rescored
         return result
 
-    @app.post("/api/actions/hunter-enrich", dependencies=[Depends(require_mutation_auth)])
+    @app.post("/api/actions/hunter-enrich", tags=["Actions"], summary="Enrich emails via Hunter.io", dependencies=[Depends(require_mutation_auth)])
     @limiter.limit("10/minute")
     def api_hunter_enrich(request: Request, payload: HunterEnrichRequest) -> dict:
         """Enrich lead businesses with email contacts via Hunter.io.
@@ -965,7 +984,7 @@ def create_app() -> FastAPI:
         """
         return run_hunter_enrich(limit=payload.limit)
 
-    @app.post("/api/actions/export-google-sheets", dependencies=[Depends(require_mutation_auth)])
+    @app.post("/api/actions/export-google-sheets", tags=["Actions"], summary="Export leads to Google Sheets", dependencies=[Depends(require_mutation_auth)])
     @limiter.limit("5/minute")
     def api_export_google_sheets(request: Request, payload: SheetsExportRequest) -> dict:
         """Export leads directly to a Google Sheet.
@@ -980,7 +999,7 @@ def create_app() -> FastAPI:
             require_domain_qualification=payload.require_domain_qualification,
         )
 
-    @app.post("/api/actions/test-notification", dependencies=[Depends(require_mutation_auth)])
+    @app.post("/api/actions/test-notification", tags=["Actions"], summary="Send test push notification", dependencies=[Depends(require_mutation_auth)])
     @limiter.limit("5/minute")
     def api_test_notification(request: Request, payload: TestNotificationRequest) -> dict:
         """Send a test push notification via ntfy.sh.
@@ -995,12 +1014,12 @@ def create_app() -> FastAPI:
         )
         return {"sent": success}
 
-    @app.post("/api/actions/daily-report", dependencies=[Depends(require_mutation_auth)])
+    @app.post("/api/actions/daily-report", tags=["Actions"], summary="Generate daily report", dependencies=[Depends(require_mutation_auth)])
     @limiter.limit("3/minute")
     def api_daily_report(request: Request) -> dict:
         return generate_daily_report()
 
-    @app.post("/api/actions/business-export", dependencies=[Depends(require_mutation_auth)])
+    @app.post("/api/actions/business-export", tags=["Actions"], summary="Export business leads to CSV", dependencies=[Depends(require_mutation_auth)])
     @limiter.limit("10/minute")
     def api_export_businesses(request: Request, payload: BusinessExportRequest) -> dict:
         path = export_business_leads(
@@ -1014,7 +1033,7 @@ def create_app() -> FastAPI:
         )
         return {"path": str(path) if path else None}
 
-    @app.post("/api/actions/reset-ddg-verification", dependencies=[Depends(require_mutation_auth)])
+    @app.post("/api/actions/reset-ddg-verification", tags=["Actions"], summary="Reset broken DDG verification data", dependencies=[Depends(require_mutation_auth)])
     @limiter.limit("3/minute")
     def api_reset_ddg_verification(request: Request) -> dict:
         """Clear ALL existing DDG verification data and force rescore.
@@ -1053,28 +1072,28 @@ def create_app() -> FastAPI:
             "rescored": rescored,
         }
 
-    @app.get("/api/automation/status")
+    @app.get("/api/automation/status", tags=["Automation"], summary="Get automation status")
     def api_automation_status() -> dict:
         return automation_controller.status()
 
-    @app.post("/api/automation/start", dependencies=[Depends(require_mutation_auth)])
+    @app.post("/api/automation/start", tags=["Automation"], summary="Start automation loop", dependencies=[Depends(require_mutation_auth)])
     def api_automation_start(payload: Optional[AutomationSettingsRequest] = None) -> dict:
         updates = payload.model_dump(exclude_none=True) if payload else {}
         return automation_controller.start(updates=updates)
 
-    @app.post("/api/automation/stop", dependencies=[Depends(require_mutation_auth)])
+    @app.post("/api/automation/stop", tags=["Automation"], summary="Stop automation loop", dependencies=[Depends(require_mutation_auth)])
     def api_automation_stop() -> dict:
         return automation_controller.stop()
 
-    @app.post("/api/automation/run-now", dependencies=[Depends(require_mutation_auth)])
+    @app.post("/api/automation/run-now", tags=["Automation"], summary="Trigger immediate pipeline run", dependencies=[Depends(require_mutation_auth)])
     def api_automation_run_now() -> dict:
         return automation_controller.run_now()
 
-    @app.post("/api/automation/daily-target-now", dependencies=[Depends(require_mutation_auth)])
+    @app.post("/api/automation/daily-target-now", tags=["Automation"], summary="Run daily target export now", dependencies=[Depends(require_mutation_auth)])
     def api_automation_daily_target_now() -> dict:
         return automation_controller.run_daily_target_now()
 
-    @app.post("/api/automation/settings", dependencies=[Depends(require_mutation_auth)])
+    @app.post("/api/automation/settings", tags=["Automation"], summary="Update automation settings", dependencies=[Depends(require_mutation_auth)])
     def api_automation_update_settings(payload: AutomationSettingsRequest) -> dict:
         updates = payload.model_dump(exclude_none=True)
         # Validate file paths if present
@@ -1087,7 +1106,7 @@ def create_app() -> FastAPI:
 
     # --- Continuous Verification endpoints ---
 
-    @app.post("/api/automation/start-verification", dependencies=[Depends(require_mutation_auth)])
+    @app.post("/api/automation/start-verification", tags=["Automation"], summary="Start verification loop", dependencies=[Depends(require_mutation_auth)])
     def api_start_verification(payload: Optional[VerificationSettingsRequest] = None) -> dict:
         """Start the continuous verification loop.
 
@@ -1098,19 +1117,19 @@ def create_app() -> FastAPI:
         updates = payload.model_dump(exclude_none=True) if payload else {}
         return automation_controller.start_verification(updates=updates)
 
-    @app.post("/api/automation/stop-verification", dependencies=[Depends(require_mutation_auth)])
+    @app.post("/api/automation/stop-verification", tags=["Automation"], summary="Stop verification loop", dependencies=[Depends(require_mutation_auth)])
     def api_stop_verification() -> dict:
         """Stop the continuous verification loop."""
         return automation_controller.stop_verification()
 
-    @app.post("/api/automation/verification-settings", dependencies=[Depends(require_mutation_auth)])
+    @app.post("/api/automation/verification-settings", tags=["Automation"], summary="Update verification settings", dependencies=[Depends(require_mutation_auth)])
     def api_verification_settings(payload: VerificationSettingsRequest) -> dict:
         """Update continuous verification settings."""
         updates = payload.model_dump(exclude_none=True)
         automation_controller.update_verify_settings(updates)
         return automation_controller.status()
 
-    @app.get("/api/dead-letter")
+    @app.get("/api/dead-letter", tags=["Admin"], summary="List dead-letter businesses")
     def api_dead_letter(
         limit: int = Query(default=200, ge=1, le=2000),
         offset: int = Query(default=0, ge=0),
@@ -1123,7 +1142,7 @@ def create_app() -> FastAPI:
             "items": items,
         }
 
-    @app.get("/api/duplicates")
+    @app.get("/api/duplicates", tags=["Admin"], summary="List duplicate clusters")
     def api_duplicates(
         limit: int = Query(default=100, ge=1, le=1000),
         offset: int = Query(default=0, ge=0),
@@ -1136,12 +1155,12 @@ def create_app() -> FastAPI:
             "clusters": clusters,
         }
 
-    @app.post("/api/actions/run-dedup")
+    @app.post("/api/actions/run-dedup", tags=["Admin"], summary="Run deduplication scan")
     @limiter.limit("5/minute")
     def api_run_dedup(request: Request, _auth: None = Depends(require_mutation_auth)) -> dict:
         return run_dedup()
 
-    @app.post("/api/actions/dismiss-duplicate")
+    @app.post("/api/actions/dismiss-duplicate", tags=["Admin"], summary="Dismiss a duplicate match")
     @limiter.limit("30/minute")
     def api_dismiss_duplicate(
         request: Request,
@@ -1151,7 +1170,7 @@ def create_app() -> FastAPI:
         dismissed = dismiss_duplicate(business_id)
         return {"dismissed": dismissed}
 
-    @app.get("/api/exports/files")
+    @app.get("/api/exports/files", tags=["Exports"], summary="List exported CSV files")
     def api_export_files() -> list[dict]:
         files = []
         for path in _export_dir().glob("*.csv"):
@@ -1166,7 +1185,7 @@ def create_app() -> FastAPI:
         files.sort(key=lambda entry: entry["modified_at"], reverse=True)
         return files
 
-    @app.get("/api/exports/files/{filename}")
+    @app.get("/api/exports/files/{filename}", tags=["Exports"], summary="Download an exported CSV file")
     def api_download_export(filename: str):
         if "/" in filename or "\\" in filename:
             raise HTTPException(status_code=400, detail="Invalid filename")

@@ -11,6 +11,7 @@ import ExportsView from "./components/ExportsView";
 import DeadLetterView from "./components/DeadLetterView";
 import DuplicatesView from "./components/DuplicatesView";
 import BusinessDetailView from "./components/BusinessDetailView";
+import ErrorBoundary from "./components/ErrorBoundary";
 import { useEffect } from "react";
 
 type View = "dashboard" | "leads" | "actions" | "automation" | "jobs" | "exports" | "dead-letter" | "duplicates";
@@ -27,8 +28,16 @@ const NAV_ITEMS: { key: View; label: string; icon: string }[] = [
 ];
 
 export default function App() {
-  const [view, setView] = useState<View>("dashboard");
+  const [view, setView] = useState<View>(() => {
+    const hash = window.location.hash.replace("#", "") as View;
+    const validViews: View[] = ["dashboard", "leads", "actions", "automation", "jobs", "exports", "dead-letter", "duplicates"];
+    return validViews.includes(hash) ? hash : "dashboard";
+  });
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    window.location.hash = view;
+  }, [view]);
 
   // Data state via React Query
   const { data: metrics } = useQuery({ queryKey: ["metrics"], queryFn: api.metrics, refetchInterval: 30000 });
@@ -175,22 +184,27 @@ export default function App() {
 
         {/* View content */}
         <div className="flex-1 overflow-y-auto p-4 lg:p-6">
-          {view === "dashboard" && <DashboardView metrics={metrics ?? null} automation={automation ?? null} />}
+          {view === "dashboard" && <ErrorBoundary><DashboardView metrics={metrics ?? null} automation={automation ?? null} /></ErrorBoundary>}
           {view === "leads" && !selectedBusinessId && (
+            <ErrorBoundary>
             <LeadsView
               leads={leads ?? null} metrics={metrics ?? null} filters={filters} categories={categories ?? []} cities={cities ?? []} loading={loading || actionLoading}
               onFiltersChange={setFilters}
               onApply={() => void queryClient.invalidateQueries({ queryKey: ["leads"] })}
               onSelectBusiness={setSelectedBusinessId}
             />
+            </ErrorBoundary>
           )}
           {view === "leads" && selectedBusinessId && (
+            <ErrorBoundary>
             <BusinessDetailView
               businessId={selectedBusinessId}
               onBack={() => setSelectedBusinessId(null)}
             />
+            </ErrorBoundary>
           )}
           {view === "actions" && (
+            <ErrorBoundary>
             <ActionsView
               actionLoading={actionLoading} setActionLoading={setActionLoading} setStatusMessage={setStatusMessage} refresh={fullRefresh}
               exportPlatform={exportPlatform} setExportPlatform={setExportPlatform}
@@ -199,8 +213,10 @@ export default function App() {
               exportRequireUnhosted={exportRequireUnhosted} setExportRequireUnhosted={setExportRequireUnhosted}
               exportRequireDomainQualification={exportRequireDomainQualification} setExportRequireDomainQualification={setExportRequireDomainQualification}
             />
+            </ErrorBoundary>
           )}
           {view === "automation" && (
+            <ErrorBoundary>
             <AutomationView
               automation={automation ?? null} setAutomation={(s: AutomationStatus) => queryClient.setQueryData(["automation"], s)}
               actionLoading={actionLoading} setActionLoading={setActionLoading} setStatusMessage={setStatusMessage} refresh={fullRefresh}
@@ -216,11 +232,12 @@ export default function App() {
               exportPlatform={exportPlatform} exportMinScore={exportMinScore} exportRequireContact={exportRequireContact}
               exportRequireUnhosted={exportRequireUnhosted} exportRequireDomainQualification={exportRequireDomainQualification}
             />
+            </ErrorBoundary>
           )}
-          {view === "jobs" && <JobsView jobs={jobs ?? []} />}
-          {view === "exports" && <ExportsView files={exportFiles ?? []} />}
-          {view === "dead-letter" && <DeadLetterView />}
-          {view === "duplicates" && <DuplicatesView />}
+          {view === "jobs" && <ErrorBoundary><JobsView jobs={jobs ?? []} /></ErrorBoundary>}
+          {view === "exports" && <ErrorBoundary><ExportsView files={exportFiles ?? []} /></ErrorBoundary>}
+          {view === "dead-letter" && <ErrorBoundary><DeadLetterView /></ErrorBoundary>}
+          {view === "duplicates" && <ErrorBoundary><DuplicatesView /></ErrorBoundary>}
         </div>
       </main>
     </div>

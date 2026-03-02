@@ -22,7 +22,10 @@ from sqlalchemy import not_, or_, select
 
 from ..db import session_scope
 from ..jobs import complete_job, fail_job, start_job
+from ..circuit_breaker import get_breaker
 from ..models import Business, City
+
+_cb = get_breaker("llm", failure_threshold=5, recovery_timeout=60)
 
 logger = logging.getLogger(__name__)
 
