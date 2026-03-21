@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from sqlalchemy import select, or_, func
+from sqlalchemy import select, func
 from domain_pipeline.db import session_scope
 from domain_pipeline.models import Business
 from domain_pipeline.workers.business_leads import _RESULT_KEY_MAP
@@ -21,7 +21,7 @@ with session_scope() as session:
     # For DDG, check the result values
     rkey = _RESULT_KEY_MAP.get("ddg_verified")
     if rkey:
-        print(f"\n=== DDG Result Values ===")
+        print("\n=== DDG Result Values ===")
         results = session.execute(
             select(Business.raw[rkey].astext, func.count()).where(Business.raw.has_key("ddg_verified")).group_by(Business.raw[rkey].astext)
         ).all()
@@ -31,7 +31,7 @@ with session_scope() as session:
     # For Google Search, check the result values
     rkey_gs = _RESULT_KEY_MAP.get("google_search_verified")
     if rkey_gs:
-        print(f"\n=== Google Search Result Values ===")
+        print("\n=== Google Search Result Values ===")
         results = session.execute(
             select(Business.raw[rkey_gs].astext, func.count()).where(Business.raw.has_key("google_search_verified")).group_by(Business.raw[rkey_gs].astext)
         ).all()
