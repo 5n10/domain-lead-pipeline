@@ -29,16 +29,9 @@ from ..models import Business, City
 
 # Reuse matching logic from web_search_verify — battle-tested functions
 from .web_search_verify import (
-    DIRECTORY_DOMAINS,
-    PUBLIC_EMAIL_DOMAINS_QUICK,
     _build_search_queries,
-    _domain_contains_name,
     _extract_business_website,
-    _get_domain_from_url,
     _is_directory_or_social,
-    _name_words,
-    _normalize_name,
-    _result_matches_business,
 )
 
 logger = logging.getLogger(__name__)

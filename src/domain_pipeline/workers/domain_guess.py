@@ -13,7 +13,6 @@ import logging
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Optional
 
 import httpx
 from sqlalchemy import or_, not_, select
@@ -535,7 +534,6 @@ def _fetch_page(url: str) -> tuple[int, str, str, str]:
     Returns (0, "", "", "") on any error.
     """
     try:
-        from urllib.parse import urlparse
 
         with httpx.Client(
             follow_redirects=True,
@@ -771,7 +769,7 @@ def _is_valid_business_site(
     # "B-K Auto Service" → matching {"auto", "service"} → both are generic →
     # auto-services.ca could be ANY auto service, not specifically B-K.
     brand_matches = matching_words - STRIP_ALWAYS - GENERIC_LOCATION_WORDS
-    brand_distinctive = {w for w in brand_matches if len(w) >= 5}
+    {w for w in brand_matches if len(w) >= 5}
 
     # ----- Content matching rules -----
     # When domain_base_match is True, we already have strong evidence from

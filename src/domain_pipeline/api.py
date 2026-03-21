@@ -21,7 +21,7 @@ from starlette.staticfiles import StaticFiles
 
 from .automation import AutomationController
 from .config import load_config
-from .logging_config import setup_logging, set_correlation_id, get_correlation_id
+from .logging_config import setup_logging, set_correlation_id
 from .db import pool_stats, session_scope
 from .metrics import collect_metrics
 from .models import (

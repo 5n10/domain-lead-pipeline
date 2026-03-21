@@ -15,16 +15,13 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from sqlalchemy import exists, func, not_, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy import or_, select
 
 from ..config import load_config
 from ..db import session_scope
 from ..jobs import complete_job, fail_job, start_job
 from ..models import (
     Business,
-    BusinessContact,
-    BusinessOutreachExport,
     City,
 )
 from .business_leads import (
@@ -153,7 +150,7 @@ def export_to_sheets(
             ).execute()
 
             # Write new data
-            result = sheets.values().update(
+            sheets.values().update(
                 spreadsheetId=spreadsheet_id,
                 range=f"{sheet_name}!A1",
                 valueInputOption="RAW",

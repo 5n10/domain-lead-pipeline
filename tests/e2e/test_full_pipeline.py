@@ -13,7 +13,6 @@ Requires DOMAIN_PIPELINE_TEST_DATABASE_URL to be set.
 """
 from __future__ import annotations
 
-import os
 from datetime import datetime, timezone
 
 import pytest
