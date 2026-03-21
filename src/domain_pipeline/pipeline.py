@@ -16,7 +16,7 @@ from .workers.llm_verify import run_batch as run_llm_verify
 from .workers.foursquare import run_batch as run_foursquare_enrich, verify_websites as verify_websites_foursquare
 from .workers.domain_guess import run_batch as run_domain_guess
 from .workers.google_search_verify import run_batch as run_google_search_verify
-from .notifications import notify_pipeline_complete, notify_error
+from .notifications import notify_pipeline_complete
 
 
 def maybe_import_businesses(

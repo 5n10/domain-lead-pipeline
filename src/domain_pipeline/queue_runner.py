@@ -13,7 +13,7 @@ Usage (in verification loop or standalone script):
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 
 from .db import session_scope
 from .queue import (
