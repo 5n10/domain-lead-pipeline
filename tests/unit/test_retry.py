@@ -4,6 +4,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 from datetime import datetime, timezone
 
+
 from domain_pipeline.retry import (
     MAX_RETRIES,
     BASE_BACKOFF_SECONDS,
