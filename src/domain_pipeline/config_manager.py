@@ -71,7 +71,6 @@ class ConfigSchema:
 
     # Mutation API auth
     mutation_api_key: Optional[str] = field(default_factory=lambda: _env_str("MUTATION_API_KEY"))
-    mutation_localhost_bypass: bool = field(default_factory=lambda: _env_bool("MUTATION_LOCALHOST_BYPASS", "true"))
 
     # Automation
     auto_runner_enabled: bool = field(default_factory=lambda: _env_bool("AUTO_RUNNER_ENABLED", "false"))
