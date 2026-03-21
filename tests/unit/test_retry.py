@@ -1,10 +1,8 @@
 """Unit tests for domain_pipeline.retry module."""
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch, call
-from datetime import datetime, timedelta, timezone
-
-import pytest
+from unittest.mock import MagicMock, patch
+from datetime import datetime, timezone
 
 from domain_pipeline.retry import (
     MAX_RETRIES,
