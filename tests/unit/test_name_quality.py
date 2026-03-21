@@ -1,7 +1,6 @@
 """Unit tests for domain_guess name quality filter."""
 from __future__ import annotations
 
-import pytest
 
 from domain_pipeline.workers.domain_guess import (
     GENERIC_SINGLE_WORDS,
