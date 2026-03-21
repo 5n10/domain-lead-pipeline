@@ -9,8 +9,6 @@ can run without DOMAIN_PIPELINE_TEST_DATABASE_URL being set.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
-from unittest.mock import MagicMock
 
 import pytest
 

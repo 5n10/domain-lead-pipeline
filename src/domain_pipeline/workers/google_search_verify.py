@@ -14,10 +14,8 @@ from __future__ import annotations
 
 import logging
 import random
-import re
 import time
 from typing import Optional
-from urllib.parse import parse_qs, unquote, urlparse
 
 from tenacity import retry, wait_exponential, stop_after_attempt, retry_if_exception_type
 
@@ -31,11 +29,8 @@ from ..models import Business, City
 
 # Reuse matching/filtering logic from web_search_verify
 from .web_search_verify import (
-    DIRECTORY_DOMAINS,
-    PUBLIC_EMAIL_DOMAINS_QUICK,
     _extract_business_website,
     _get_domain_from_url,
-    _result_matches_business,
 )
 
 logger = logging.getLogger(__name__)
@@ -332,7 +327,6 @@ def run_batch(
                 # Try each query until we get results
                 results = []
                 query_used = search_queries[0]
-                was_blocked = False
 
                 for q in search_queries:
                     results = _search_google(q, country=country, max_results=10)
