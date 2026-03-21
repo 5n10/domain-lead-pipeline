@@ -9,7 +9,6 @@ from typing import Any, Optional
 
 import requests
 from sqlalchemy import select
-from sqlalchemy.dialects.postgresql import insert
 
 from ..config import load_config
 from ..db import session_scope
@@ -379,18 +378,23 @@ def import_osm(area: AreaConfig, categories: list[CategoryConfig]) -> int:
                 with session_scope() as db:
                     city = get_or_create_city(db, area)
 
+                    # Pre-fetch existing businesses by source_id to avoid N+1 queries
+                    all_source_ids = [f"{e.get('type')}/{e.get('id')}" for e in elements]
+                    existing_ids = set(
+                        db.execute(
+                            select(Business.source_id)
+                            .where(Business.source == "osm")
+                            .where(Business.source_id.in_(all_source_ids))
+                        )
+                        .scalars()
+                        .all()
+                    )
+
                     for element in elements:
                         tags = element.get("tags", {})
                         source_id = f"{element.get('type')}/{element.get('id')}"
 
-                        existing = (
-                            db.execute(
-                                select(Business.id).where(Business.source == "osm").where(Business.source_id == source_id)
-                            )
-                            .scalars()
-                            .first()
-                        )
-                        if existing:
+                        if source_id in existing_ids:
                             continue
 
                         lat, lon = element_location(element)

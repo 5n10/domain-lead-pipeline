@@ -2,10 +2,8 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock
 
-import pytest
 
 from domain_pipeline.queue import (
     LAYER_ORDER,
@@ -16,8 +14,6 @@ from domain_pipeline.queue import (
     fail,
     requeue_failed,
     queue_depth,
-    cleanup_completed,
-    enqueue_stale_businesses,
 )
 
 
