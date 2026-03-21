@@ -109,9 +109,12 @@ def normalize_domain(raw: str) -> Optional[str]:
 
     if "://" in value:
         parsed = urlparse(value)
-        host = parsed.netloc
+        host = parsed.hostname or parsed.netloc
     else:
         host = value.split("/")[0]
+
+    if not host:
+        return None
 
     host = host.strip().lower().rstrip(".")
     if host.startswith("www."):
