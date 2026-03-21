@@ -13,8 +13,10 @@ import logging
 import math
 import re
 from collections import defaultdict
+from typing import Optional
 
-from sqlalchemy import func, select, update
+from sqlalchemy import and_, func, or_, select, update
+from sqlalchemy.orm import Session
 
 from ..db import session_scope
 from ..models import Business, BusinessContact

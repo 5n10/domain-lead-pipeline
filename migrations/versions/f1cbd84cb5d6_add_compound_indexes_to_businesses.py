@@ -5,6 +5,7 @@ Revises: 0008_biz_leads
 Create Date: 2026-02-22 18:59:34.223047
 """
 from alembic import op
+import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.

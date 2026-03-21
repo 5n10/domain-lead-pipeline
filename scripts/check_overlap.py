@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from sqlalchemy import select, or_
+from sqlalchemy import select, or_, func
 from domain_pipeline.db import session_scope
 from domain_pipeline.models import Business
 from domain_pipeline.workers.business_leads import compute_verification_confidence, _CONCLUSIVE_RESULTS, _RESULT_KEY_MAP
@@ -21,7 +21,7 @@ with session_scope() as session:
     )
     leads = session.execute(stmt).scalars().all()
     
-    print("=== Top 100 leads verification status ===")
+    print(f"=== Top 100 leads verification status ===")
     counts = {"high": 0, "medium": 0, "low": 0, "unverified": 0}
     sources_count = {}
     

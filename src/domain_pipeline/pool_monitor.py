@@ -7,10 +7,12 @@ via `get_pool_stats()`.
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 from sqlalchemy import event
 from sqlalchemy.engine import Engine
+from sqlalchemy.pool import Pool
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +51,7 @@ def attach_pool_listeners(engine: Engine) -> None:
         pass  # placeholder — real checkout errors are caught below
 
     # Log when pool overflows
-    getattr(pool, "_overflow", None)
+    original_overflow = getattr(pool, "_overflow", None)
 
     @event.listens_for(pool, "connect")
     def on_connect(dbapi_conn: Any, connection_record: Any) -> None:
