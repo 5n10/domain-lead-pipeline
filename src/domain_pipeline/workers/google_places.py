@@ -15,16 +15,14 @@ from __future__ import annotations
 import logging
 import time
 from typing import Any, Optional
-from urllib.parse import quote_plus
 
 from tenacity import retry, wait_exponential, stop_after_attempt, retry_if_exception_type
 
 import requests
-from sqlalchemy import and_, exists, func, not_, or_, select
+from sqlalchemy import exists, not_, or_, select
 
 from ..config import load_config
 from ..db import session_scope
-from ..domain_utils import normalize_domain
 from ..jobs import complete_job, fail_job, start_job
 from ..models import Business, BusinessContact, City
 

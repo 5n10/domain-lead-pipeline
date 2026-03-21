@@ -8,8 +8,6 @@ from __future__ import annotations
 import pytest
 
 from domain_pipeline.workers.business_leads import (
-    CONFIDENCE_WEIGHTS,
-    VERIFICATION_KEYS,
     compute_verification_confidence,
     compute_verification_count,
     compute_verification_weight,

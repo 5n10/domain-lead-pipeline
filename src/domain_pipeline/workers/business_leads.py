@@ -437,12 +437,12 @@ def _score_business(business: Business, feature: dict) -> tuple[float, dict]:
     has_email = bool(feature["emails"])
     has_business_email = bool(feature["business_emails"])
     has_phone = bool(feature["phones"])
-    has_domain = bool(feature["domains"])
+    bool(feature["domains"])
     has_hosted_domain = bool(feature["hosted_domains"])
     has_parked_domain = bool(feature["parked_domains"])
     has_registered_domain = bool(feature["registered_domains"])
-    has_verified_unhosted_domain = bool(feature["verified_unhosted_domains"])
-    has_unregistered_candidate_domain = bool(feature["unregistered_domains"])
+    bool(feature["verified_unhosted_domains"])
+    bool(feature["unregistered_domains"])
     has_unknown_domain = bool(feature["unknown_domains"])
     has_any_contact = has_email or has_phone
 
@@ -567,7 +567,7 @@ def _build_reasons(business: Business, feature: dict, disqualify_reason: str = N
 
 
 def score_businesses(limit: Optional[int] = None, scope: Optional[str] = None, force_rescore: bool = False) -> int:
-    config = load_config()
+    load_config()
     # When limit is None or 0, score ALL businesses (no limit)
     batch_size = None if (limit is None or limit <= 0) else limit
 

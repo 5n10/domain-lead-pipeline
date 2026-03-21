@@ -625,7 +625,7 @@ def run_batch(
     """
     from ..config import load_config
 
-    config = load_config()
+    load_config()
 
     batch_size = 100  # Conservative default for DDG
     if limit is not None and limit > 0:

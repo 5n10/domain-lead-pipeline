@@ -10,7 +10,6 @@ Get API key at: https://foursquare.com/developers/signup
 from __future__ import annotations
 
 import logging
-import re
 import time
 from typing import Any, Optional
 
