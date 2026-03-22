@@ -21,7 +21,10 @@ from sqlalchemy import exists, not_, or_, select
 from ..config import load_config
 from ..db import session_scope
 from ..jobs import complete_job, fail_job, start_job
+from ..circuit_breaker import get_breaker
 from ..models import Business, BusinessContact, City
+
+_cb = get_breaker("foursquare", failure_threshold=5, recovery_timeout=120)
 
 logger = logging.getLogger(__name__)
 

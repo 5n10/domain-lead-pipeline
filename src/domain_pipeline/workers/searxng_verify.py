@@ -25,6 +25,7 @@ from sqlalchemy import not_, or_, select
 from ..config import load_config
 from ..db import session_scope
 from ..jobs import complete_job, fail_job, start_job
+from ..circuit_breaker import get_breaker
 from ..models import Business, City
 
 # Reuse matching logic from web_search_verify — battle-tested functions
@@ -33,6 +34,8 @@ from .web_search_verify import (
     _extract_business_website,
     _is_directory_or_social,
 )
+
+_cb = get_breaker("searxng", failure_threshold=5, recovery_timeout=60)
 
 logger = logging.getLogger(__name__)
 

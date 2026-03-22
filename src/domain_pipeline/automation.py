@@ -8,12 +8,9 @@ from typing import Any, Optional
 
 from .config import load_config
 from .pipeline import run_once
+from .queue_runner import maintain_queue, run_queued_batch
 from .retry import get_retryable_businesses, reset_for_retry
 from .workers.business_leads import ensure_daily_target_generated, score_businesses
-from .workers.domain_guess import run_batch as run_domain_guess
-from .workers.web_search_verify import run_batch as run_ddg_verify
-from .workers.llm_verify import run_batch as run_llm_verify
-from .workers.searxng_verify import run_batch as run_searxng_verify
 
 
 logger = logging.getLogger(__name__)
@@ -312,116 +309,55 @@ class AutomationController:
                     except Exception as e:
                         logger.exception("Verification: Retry re-queue error: %s", e)
 
-                # --- Layer 1: Domain Guess (fastest, FREE) ---
-                if self._verify_stop_event.is_set():
-                    break
-                try:
-                    dg_result = run_domain_guess(
-                        limit=settings.domain_guess_batch,
-                        min_score=settings.domain_guess_min_score,
-                    )
-                    dg_processed = dg_result.get("processed", 0)
-                    dg_websites = dg_result.get("websites_found", 0)
-                    total_processed += dg_processed
-                    with self._verify_state_lock:
-                        self._verify_totals["domain_guess_processed"] += dg_processed
-                        self._verify_totals["domain_guess_websites"] += dg_websites
-                    if dg_processed > 0:
-                        logger.info(
-                            "Verification: Domain Guess batch done — %d processed, %d websites found",
-                            dg_processed, dg_websites,
-                        )
-                except Exception as e:
-                    logger.exception("Verification: Domain Guess error: %s", e)
+                # --- Run verification layers via queue_runner ---
+                layers = [
+                    ("domain_guess", settings.domain_guess_batch, settings.domain_guess_min_score),
+                    ("searxng", settings.searxng_batch, settings.searxng_min_score),
+                    ("llm", settings.llm_batch, settings.llm_min_score),
+                    ("ddg", settings.ddg_batch, settings.ddg_min_score),
+                    ("google_search", settings.google_search_batch, settings.google_search_min_score),
+                ]
 
-                # --- Layer 2: SearXNG Meta-Search (fast, FREE, multi-engine) ---
-                if self._verify_stop_event.is_set():
-                    break
-                try:
-                    sxng_result = run_searxng_verify(
-                        limit=settings.searxng_batch,
-                        min_score=settings.searxng_min_score,
-                    )
-                    sxng_processed = sxng_result.get("processed", 0)
-                    sxng_websites = sxng_result.get("websites_found", 0)
-                    total_processed += sxng_processed
-                    with self._verify_state_lock:
-                        self._verify_totals["searxng_processed"] += sxng_processed
-                        self._verify_totals["searxng_websites"] += sxng_websites
-                    if sxng_processed > 0:
-                        logger.info(
-                            "Verification: SearXNG batch done — %d processed, %d websites found",
-                            sxng_processed, sxng_websites,
-                        )
-                except Exception as e:
-                    logger.exception("Verification: SearXNG error: %s", e)
+                for layer_name, batch_size, min_score in layers:
+                    if self._verify_stop_event.is_set():
+                        break
+                    try:
+                        qr = run_queued_batch(layer_name, limit=batch_size, min_score=min_score)
+                        worker_result = qr.get("worker_result", {}) or {}
+                        layer_processed = worker_result.get("processed", 0) if isinstance(worker_result, dict) else 0
+                        layer_websites = worker_result.get("websites_found", 0) if isinstance(worker_result, dict) else 0
+                        total_processed += layer_processed
+                        with self._verify_state_lock:
+                            self._verify_totals[f"{layer_name}_processed"] = (
+                                self._verify_totals.get(f"{layer_name}_processed", 0) + layer_processed
+                            )
+                            self._verify_totals[f"{layer_name}_websites"] = (
+                                self._verify_totals.get(f"{layer_name}_websites", 0) + layer_websites
+                            )
+                        if layer_processed > 0:
+                            logger.info(
+                                "Verification: %s batch done — %d processed, %d websites found (claimed %d from queue)",
+                                layer_name, layer_processed, layer_websites, qr.get("claimed", 0),
+                            )
+                    except Exception as e:
+                        logger.exception("Verification: %s error: %s", layer_name, e)
 
-                # --- Layer 3: LLM Verify (fast via API) ---
-                if self._verify_stop_event.is_set():
-                    break
-                try:
-                    llm_result = run_llm_verify(
-                        limit=settings.llm_batch,
-                        min_score=settings.llm_min_score,
-                    )
-                    llm_processed = llm_result.get("processed", 0)
-                    llm_websites = llm_result.get("websites_found", 0)
-                    total_processed += llm_processed
-                    with self._verify_state_lock:
-                        self._verify_totals["llm_processed"] += llm_processed
-                        self._verify_totals["llm_websites"] += llm_websites
-                    if llm_processed > 0:
-                        logger.info(
-                            "Verification: LLM batch done — %d processed, %d websites found",
-                            llm_processed, llm_websites,
-                        )
-                except Exception as e:
-                    logger.exception("Verification: LLM Verify error: %s", e)
-
-                # --- Layer 4: DDG Search (legacy, moderate speed, FREE) ---
-                if self._verify_stop_event.is_set():
-                    break
-                try:
-                    ddg_result = run_ddg_verify(
-                        limit=settings.ddg_batch,
-                        min_score=settings.ddg_min_score,
-                    )
-                    ddg_processed = ddg_result.get("processed", 0)
-                    ddg_websites = ddg_result.get("websites_found", 0)
-                    total_processed += ddg_processed
-                    with self._verify_state_lock:
-                        self._verify_totals["ddg_processed"] += ddg_processed
-                        self._verify_totals["ddg_websites"] += ddg_websites
-                    if ddg_processed > 0:
-                        logger.info(
-                            "Verification: DDG batch done — %d processed, %d websites found",
-                            ddg_processed, ddg_websites,
-                        )
-                except Exception as e:
-                    logger.exception("Verification: DDG Verify error: %s", e)
-
-                # --- Layer 5: Google Search (legacy, slowest, FREE) ---
-                if self._verify_stop_event.is_set():
-                    break
-                try:
-                    from .workers.google_search_verify import run_batch as run_google_search_verify
-                    gs_result = run_google_search_verify(
-                        limit=settings.google_search_batch,
-                        min_score=settings.google_search_min_score,
-                    )
-                    gs_processed = gs_result.get("processed", 0)
-                    gs_websites = gs_result.get("websites_found", 0)
-                    total_processed += gs_processed
-                    with self._verify_state_lock:
-                        self._verify_totals["google_search_processed"] += gs_processed
-                        self._verify_totals["google_search_websites"] += gs_websites
-                    if gs_processed > 0:
-                        logger.info(
-                            "Verification: Google Search batch done — %d processed, %d websites found",
-                            gs_processed, gs_websites,
-                        )
-                except Exception as e:
-                    logger.exception("Verification: Google Search error: %s", e)
+                # --- Queue maintenance (hourly) ---
+                if not self._verify_stop_event.is_set():
+                    try:
+                        now = datetime.now(timezone.utc)
+                        last_maint = getattr(self, "_last_queue_maintenance", None)
+                        if last_maint is None or (now - last_maint).total_seconds() >= 3600:
+                            maint = maintain_queue()
+                            self._last_queue_maintenance = now
+                            logger.info(
+                                "Queue maintenance: requeued %d failed, enqueued %d stale, depth=%s",
+                                maint.get("requeued_failed", 0),
+                                maint.get("stale_enqueued", 0),
+                                maint.get("queue_depth", {}),
+                            )
+                    except Exception as e:
+                        logger.exception("Queue maintenance error: %s", e)
 
                 # --- Rescore after verification ---
                 if self._verify_stop_event.is_set():

@@ -16,19 +16,6 @@ services:
       timeout: 5s
       retries: 5
 
-  redis:
-    image: redis:7-alpine
-    restart: unless-stopped
-    ports:
-      - "6379:6379"
-    volumes:
-      - redisdata:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   searxng:
     image: searxng/searxng:latest
     restart: unless-stopped
@@ -45,7 +32,24 @@ services:
         max-size: "1m"
         max-file: "1"
 
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      searxng:
+        condition: service_started
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/domain_leads
+      - SEARXNG_URL=http://searxng:8080
+    env_file:
+      - .env
+    volumes:
+      - ./exports:/app/exports
+
 volumes:
   pgdata:
-  redisdata:
   searxng_data:

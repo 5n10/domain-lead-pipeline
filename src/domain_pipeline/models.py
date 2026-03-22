@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from typing import Optional
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, Text, UniqueConstraint, Index
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, Text, UniqueConstraint, Index, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 from sqlalchemy.dialects.postgresql import UUID, JSONB, CITEXT
@@ -150,6 +150,8 @@ class Business(Base):
         UniqueConstraint("source", "source_id", name="businesses_source_uidx"),
         Index("businesses_lead_score_idx", "lead_score"),
         Index("businesses_city_idx", "city_id"),
+        Index("businesses_no_website_idx", "lead_score", postgresql_where=text("website_url IS NULL")),
+        Index("businesses_raw_gin_idx", "raw", postgresql_using="gin"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -202,6 +204,7 @@ class BusinessContact(Base):
     __tablename__ = "business_contacts"
     __table_args__ = (
         UniqueConstraint("business_id", "contact_type", "value", name="business_contacts_business_type_value_uidx"),
+        Index("business_contacts_business_type_idx", "business_id", "contact_type"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

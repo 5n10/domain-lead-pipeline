@@ -11,6 +11,9 @@ import ExportsView from "./components/ExportsView";
 import DeadLetterView from "./components/DeadLetterView";
 import DuplicatesView from "./components/DuplicatesView";
 import BusinessDetailView from "./components/BusinessDetailView";
+import ErrorBoundary from "./components/ErrorBoundary";
+import { ExportProvider } from "./contexts/ExportContext";
+import { AutomationSettingsProvider } from "./contexts/AutomationContext";
 import { useEffect } from "react";
 
 type View = "dashboard" | "leads" | "actions" | "automation" | "jobs" | "exports" | "dead-letter" | "duplicates";
@@ -27,8 +30,16 @@ const NAV_ITEMS: { key: View; label: string; icon: string }[] = [
 ];
 
 export default function App() {
-  const [view, setView] = useState<View>("dashboard");
+  const [view, setView] = useState<View>(() => {
+    const hash = window.location.hash.replace("#", "") as View;
+    const validViews: View[] = ["dashboard", "leads", "actions", "automation", "jobs", "exports", "dead-letter", "duplicates"];
+    return validViews.includes(hash) ? hash : "dashboard";
+  });
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    window.location.hash = view;
+  }, [view]);
 
   // Data state via React Query
   const { data: metrics } = useQuery({ queryKey: ["metrics"], queryFn: api.metrics, refetchInterval: 30000 });
@@ -68,36 +79,6 @@ export default function App() {
   const queryClient = useQueryClient();
   const loading = !metrics || !automation || !jobs;
 
-  // Settings state
-  const [exportPlatform, setExportPlatform] = useState("csv_business");
-  const [exportMinScore, setExportMinScore] = useState("40");
-  const [exportRequireContact, setExportRequireContact] = useState(true);
-  const [exportRequireUnhosted, setExportRequireUnhosted] = useState(false);
-  const [exportRequireDomainQualification, setExportRequireDomainQualification] = useState(false);
-  const [autoArea, setAutoArea] = useState("");
-  const [autoIntervalSeconds, setAutoIntervalSeconds] = useState("900");
-  const [autoSyncLimit, setAutoSyncLimit] = useState("2000");
-  const [autoRdapLimit, setAutoRdapLimit] = useState("50");
-  const [autoBusinessScoreLimit, setAutoBusinessScoreLimit] = useState("500");
-  const [dailyTargetEnabled, setDailyTargetEnabled] = useState(true);
-  const [dailyTargetAllowRecycle, setDailyTargetAllowRecycle] = useState(true);
-  const [dailyTargetCount, setDailyTargetCount] = useState("100");
-  const [dailyTargetMinScore, setDailyTargetMinScore] = useState("40");
-
-  useEffect(() => {
-    if (automation) {
-      setAutoArea(automation.settings.area ? String(automation.settings.area) : "");
-      setAutoIntervalSeconds(String(automation.settings.interval_seconds ?? 900));
-      setAutoSyncLimit(String(automation.settings.sync_limit ?? 100));
-      setAutoRdapLimit(String(automation.settings.rdap_limit ?? 5));
-      setAutoBusinessScoreLimit(String(automation.settings.business_score_limit ?? 500));
-      setDailyTargetEnabled(Boolean(automation.settings.daily_target_enabled));
-      setDailyTargetAllowRecycle(Boolean(automation.settings.daily_target_allow_recycle ?? true));
-      setDailyTargetCount(String(automation.settings.daily_target_count ?? 100));
-      setDailyTargetMinScore(String(automation.settings.daily_target_min_score ?? 40));
-    }
-  }, [automation]);
-
   useEffect(() => {
     if (leadsError) {
       setStatusMessage(`Lead query failed: ${(leadsError as Error).message}`);
@@ -113,6 +94,8 @@ export default function App() {
   const isError = statusMessage.toLowerCase().includes("failed") || statusMessage.toLowerCase().includes("error");
 
   return (
+    <ExportProvider>
+    <AutomationSettingsProvider automation={automation ?? null}>
     <div className="flex h-screen overflow-hidden">
       {/* Mobile overlay */}
       {sidebarOpen && (
@@ -175,54 +158,48 @@ export default function App() {
 
         {/* View content */}
         <div className="flex-1 overflow-y-auto p-4 lg:p-6">
-          {view === "dashboard" && <DashboardView metrics={metrics ?? null} automation={automation ?? null} />}
+          {view === "dashboard" && <ErrorBoundary><DashboardView metrics={metrics ?? null} automation={automation ?? null} /></ErrorBoundary>}
           {view === "leads" && !selectedBusinessId && (
+            <ErrorBoundary>
             <LeadsView
               leads={leads ?? null} metrics={metrics ?? null} filters={filters} categories={categories ?? []} cities={cities ?? []} loading={loading || actionLoading}
               onFiltersChange={setFilters}
               onApply={() => void queryClient.invalidateQueries({ queryKey: ["leads"] })}
               onSelectBusiness={setSelectedBusinessId}
             />
+            </ErrorBoundary>
           )}
           {view === "leads" && selectedBusinessId && (
+            <ErrorBoundary>
             <BusinessDetailView
               businessId={selectedBusinessId}
               onBack={() => setSelectedBusinessId(null)}
             />
+            </ErrorBoundary>
           )}
           {view === "actions" && (
+            <ErrorBoundary>
             <ActionsView
               actionLoading={actionLoading} setActionLoading={setActionLoading} setStatusMessage={setStatusMessage} refresh={fullRefresh}
-              exportPlatform={exportPlatform} setExportPlatform={setExportPlatform}
-              exportMinScore={exportMinScore} setExportMinScore={setExportMinScore}
-              exportRequireContact={exportRequireContact} setExportRequireContact={setExportRequireContact}
-              exportRequireUnhosted={exportRequireUnhosted} setExportRequireUnhosted={setExportRequireUnhosted}
-              exportRequireDomainQualification={exportRequireDomainQualification} setExportRequireDomainQualification={setExportRequireDomainQualification}
             />
+            </ErrorBoundary>
           )}
           {view === "automation" && (
+            <ErrorBoundary>
             <AutomationView
               automation={automation ?? null} setAutomation={(s: AutomationStatus) => queryClient.setQueryData(["automation"], s)}
               actionLoading={actionLoading} setActionLoading={setActionLoading} setStatusMessage={setStatusMessage} refresh={fullRefresh}
-              autoArea={autoArea} setAutoArea={setAutoArea}
-              autoIntervalSeconds={autoIntervalSeconds} setAutoIntervalSeconds={setAutoIntervalSeconds}
-              autoSyncLimit={autoSyncLimit} setAutoSyncLimit={setAutoSyncLimit}
-              autoRdapLimit={autoRdapLimit} setAutoRdapLimit={setAutoRdapLimit}
-              autoBusinessScoreLimit={autoBusinessScoreLimit} setAutoBusinessScoreLimit={setAutoBusinessScoreLimit}
-              dailyTargetEnabled={dailyTargetEnabled} setDailyTargetEnabled={setDailyTargetEnabled}
-              dailyTargetAllowRecycle={dailyTargetAllowRecycle} setDailyTargetAllowRecycle={setDailyTargetAllowRecycle}
-              dailyTargetCount={dailyTargetCount} setDailyTargetCount={setDailyTargetCount}
-              dailyTargetMinScore={dailyTargetMinScore} setDailyTargetMinScore={setDailyTargetMinScore}
-              exportPlatform={exportPlatform} exportMinScore={exportMinScore} exportRequireContact={exportRequireContact}
-              exportRequireUnhosted={exportRequireUnhosted} exportRequireDomainQualification={exportRequireDomainQualification}
             />
+            </ErrorBoundary>
           )}
-          {view === "jobs" && <JobsView jobs={jobs ?? []} />}
-          {view === "exports" && <ExportsView files={exportFiles ?? []} />}
-          {view === "dead-letter" && <DeadLetterView />}
-          {view === "duplicates" && <DuplicatesView />}
+          {view === "jobs" && <ErrorBoundary><JobsView jobs={jobs ?? []} /></ErrorBoundary>}
+          {view === "exports" && <ErrorBoundary><ExportsView files={exportFiles ?? []} /></ErrorBoundary>}
+          {view === "dead-letter" && <ErrorBoundary><DeadLetterView /></ErrorBoundary>}
+          {view === "duplicates" && <ErrorBoundary><DuplicatesView /></ErrorBoundary>}
         </div>
       </main>
     </div>
+    </AutomationSettingsProvider>
+    </ExportProvider>
   );
 }

@@ -18,7 +18,10 @@ from ..config import load_config
 from ..db import session_scope
 from ..domain_utils import is_public_email_domain
 from ..jobs import complete_job, fail_job, start_job
+from ..circuit_breaker import get_breaker
 from ..models import Business, BusinessContact, BusinessDomainLink, Domain
+
+_cb = get_breaker("hunter", failure_threshold=3, recovery_timeout=300)
 
 logger = logging.getLogger(__name__)
 
