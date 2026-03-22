@@ -5,19 +5,7 @@ and verification confidence caps.
 """
 from __future__ import annotations
 
-from unittest.mock import patch
-
-import pytest
-
 from domain_pipeline.workers.business_leads import (
-    SCORE_ANY_CATEGORY,
-    SCORE_ANY_EMAIL,
-    SCORE_BUSINESS_EMAIL,
-    SCORE_HIGH_PRIORITY_CATEGORY,
-    SCORE_MEDIUM_PRIORITY_CATEGORY,
-    SCORE_NO_WEBSITE,
-    SCORE_PHONE,
-    _is_branded_chain,
     _name_looks_like_domain,
     _score_business,
 )

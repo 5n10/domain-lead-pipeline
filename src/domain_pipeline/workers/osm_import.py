@@ -9,7 +9,6 @@ from typing import Any, Optional
 
 import requests
 from sqlalchemy import select
-from sqlalchemy.dialects.postgresql import insert
 
 from ..config import load_config
 from ..db import session_scope

@@ -5,13 +5,10 @@ and COUNTRY_TLDS mapping. These are pure functions with no DB or network depende
 """
 from __future__ import annotations
 
-import pytest
-
 from domain_pipeline.workers.domain_guess import (
     COUNTRY_TLDS,
     DEFAULT_TLDS,
     ENTITY_SUFFIXES,
-    STRIP_ALWAYS,
     _clean_business_name,
     _generate_candidates,
     _singular_plural_variants,
@@ -159,14 +156,12 @@ class TestGenerateCandidates:
 
     def test_hyphenated_variants_generated(self):
         candidates = _generate_candidates("GTA Heating Cooling", "CA")
-        domains = set(candidates)
         # Should include hyphenated variant
         has_hyphen = any("-" in c for c in candidates)
         assert has_hyphen
 
     def test_the_article_variants(self):
         candidates = _generate_candidates("The Village Cobbler", "CA")
-        domains = set(candidates)
         # Should include both with and without "the"
         has_village_cobbler = any("villagecobbler" in c for c in candidates)
         has_the_village = any("thevillagecobbler" in c for c in candidates)
@@ -175,14 +170,12 @@ class TestGenerateCandidates:
 
     def test_category_word_variants(self):
         candidates = _generate_candidates("Dima Laundry", "AE")
-        domains = set(candidates)
         # Track 3 should generate "dimalaundry" even though "laundry" is a stop word
         has_dimalaundry = any("dimalaundry" in c for c in candidates)
         assert has_dimalaundry
 
     def test_singular_plural_in_candidates(self):
         candidates = _generate_candidates("Morton Motors", "CA")
-        domains = set(candidates)
         has_motors = any("mortonmotors" in c for c in candidates)
         has_motor = any("mortonmotor." in c for c in candidates)
         assert has_motors

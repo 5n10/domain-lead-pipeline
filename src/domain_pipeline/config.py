@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import os
-from dataclasses import dataclass
-from typing import Optional
 from dotenv import load_dotenv
 from .config_manager import load_config as load_hierarchical_config, ConfigSchema
 

@@ -4,15 +4,11 @@ from __future__ import annotations
 import uuid
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from domain_pipeline.workers.dedup import (
     PROXIMITY_THRESHOLD_M,
     haversine_distance,
     normalize_name,
     _pick_primary,
-    find_name_proximity_duplicates,
-    find_contact_duplicates,
     mark_duplicates,
     dismiss_duplicate,
     duplicate_count,
