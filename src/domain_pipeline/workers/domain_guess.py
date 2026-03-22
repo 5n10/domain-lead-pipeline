@@ -534,7 +534,6 @@ def _fetch_page(url: str) -> tuple[int, str, str, str]:
     Returns (0, "", "", "") on any error.
     """
     try:
-
         with httpx.Client(
             follow_redirects=True,
             timeout=(2.0, 5.0),
@@ -769,7 +768,6 @@ def _is_valid_business_site(
     # "B-K Auto Service" → matching {"auto", "service"} → both are generic →
     # auto-services.ca could be ANY auto service, not specifically B-K.
     brand_matches = matching_words - STRIP_ALWAYS - GENERIC_LOCATION_WORDS
-    {w for w in brand_matches if len(w) >= 5}
 
     # ----- Content matching rules -----
     # When domain_base_match is True, we already have strong evidence from

@@ -4,7 +4,6 @@ from __future__ import annotations
 import uuid
 from unittest.mock import MagicMock
 
-
 from domain_pipeline.queue import (
     LAYER_ORDER,
     _uuid_to_lock_key,

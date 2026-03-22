@@ -623,10 +623,6 @@ def run_batch(
     Returns:
         Dict with processing stats.
     """
-    from ..config import load_config
-
-    load_config()
-
     batch_size = 100  # Conservative default for DDG
     if limit is not None and limit > 0:
         batch_size = limit

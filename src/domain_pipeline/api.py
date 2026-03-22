@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 import hmac
+import ipaddress
 import os
 from pathlib import Path
 from typing import Optional
@@ -125,12 +126,29 @@ def _export_dir() -> Path:
     return path
 
 
+def _is_loopback_host(host: Optional[str]) -> bool:
+    if not host:
+        return False
+    candidate = host.strip()
+    if not candidate:
+        return False
+    if candidate == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(candidate).is_loopback
+    except ValueError:
+        return False
+
+
 def require_mutation_auth(
     request: Request,
     x_api_key: Optional[str] = Header(default=None, alias="X-API-Key"),
     authorization: Optional[str] = Header(default=None),
 ) -> None:
     config = load_config()
+    client_host = request.client.host if request.client else None
+    if config.mutation_localhost_bypass and _is_loopback_host(client_host):
+        return
 
     token = x_api_key
     if not token and authorization and authorization.lower().startswith("bearer "):

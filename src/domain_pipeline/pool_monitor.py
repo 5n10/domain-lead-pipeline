@@ -48,9 +48,6 @@ def attach_pool_listeners(engine: Engine) -> None:
     def _noop(*args: Any, **kwargs: Any) -> None:
         pass  # placeholder — real checkout errors are caught below
 
-    # Log when pool overflows
-    getattr(pool, "_overflow", None)
-
     @event.listens_for(pool, "connect")
     def on_connect(dbapi_conn: Any, connection_record: Any) -> None:
         pool_obj = engine.pool

@@ -29,7 +29,7 @@ with session_scope() as session:
         select(func.count(Business.id)).where(Business.scored_at >= ten_mins_ago, or_(*v_clauses))
     ).scalar()
 
-    print("Stats for last 10 minutes:")
+    print(f"Stats for last 10 minutes:")
     print(f"  Businesses rescored: {scored_count}")
     print(f"  Businesses with verifications rescored: {verified_and_scored}")
     

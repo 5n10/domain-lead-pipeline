@@ -4,7 +4,6 @@ from __future__ import annotations
 import uuid
 from unittest.mock import MagicMock, patch
 
-
 from domain_pipeline.workers.dedup import (
     PROXIMITY_THRESHOLD_M,
     haversine_distance,
